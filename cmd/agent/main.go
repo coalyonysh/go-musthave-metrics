@@ -12,12 +12,17 @@ import (
 )
 
 func main() {
-	addrFlag := flag.String("a", "http://localhost:8080", "server address")
+	addrFlag := flag.String("a", "localhost:8080", "server address")
 	reportSec := flag.Int("r", 10, "report interval in seconds")
 	pollSec := flag.Int("p", 2, "poll interval in seconds")
 	flag.Parse()
 
 	serverURL := *addrFlag
+	// Добавляем протокол, если его нет
+	if !hasProtocol(serverURL) {
+		serverURL = "http://" + serverURL
+	}
+
 	pollInterval := time.Duration(*pollSec) * time.Second
 	reportInterval := time.Duration(*reportSec) * time.Second
 
@@ -38,18 +43,7 @@ func main() {
 	log.Println("Agent stopped")
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if duration, err := time.ParseDuration(value); err == nil {
-			return duration
-		}
-	}
-	return defaultValue
+// hasProtocol проверяет, содержит ли URL протокол
+func hasProtocol(url string) bool {
+	return len(url) > 7 && (url[0:7] == "http://" || url[0:8] == "https://")
 }
