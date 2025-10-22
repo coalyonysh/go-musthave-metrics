@@ -5,10 +5,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
+	"github.com/gorilla/mux"
 )
 
 type UpdateHandler struct {
@@ -27,19 +27,11 @@ func (h *UpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Парсим URL path
-	path := strings.Trim(r.URL.Path, "/")
-	parts := strings.Split(path, "/")
-
-	// Проверяем формат пути: /update/<ТИП_МЕТРИКИ>/<ИМЯ_МЕТРИКИ>/<ЗНАЧЕНИЕ_МЕТРИКИ>
-	if len(parts) != 4 || parts[0] != "update" {
-		http.Error(w, "Metric name is required", http.StatusNotFound)
-		return
-	}
-
-	metricType := parts[1]
-	metricName := parts[2]
-	metricValue := parts[3]
+	// Получаем параметры из URL через gorilla/mux
+	vars := mux.Vars(r)
+	metricType := vars["type"]
+	metricName := vars["name"]
+	metricValue := vars["value"]
 
 	// Обрабатываем метрику в зависимости от типа
 	switch metricType {
