@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -11,9 +12,14 @@ import (
 )
 
 func main() {
-	serverURL := getEnv("ADDRESS", "http://localhost:8080")
-	pollInterval := getEnvAsDuration("POLL_INTERVAL", 2*time.Second)
-	reportInterval := getEnvAsDuration("REPORT_INTERVAL", 10*time.Second)
+	addrFlag := flag.String("a", "http://localhost:8080", "server address")
+	reportSec := flag.Int("r", 10, "report interval in seconds")
+	pollSec := flag.Int("p", 2, "poll interval in seconds")
+	flag.Parse()
+
+	serverURL := *addrFlag
+	pollInterval := time.Duration(*pollSec) * time.Second
+	reportInterval := time.Duration(*reportSec) * time.Second
 
 	log.Printf("Config: Server=%s, PollInterval=%v, ReportInterval=%v",
 		serverURL, pollInterval, reportInterval)

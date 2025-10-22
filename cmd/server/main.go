@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 
@@ -10,6 +11,9 @@ import (
 )
 
 func main() {
+	addr := flag.String("a", "localhost:8080", "http server address")
+	flag.Parse()
+
 	memStorage := storage.NewMemStorage()
 
 	// Создаем хендлеры
@@ -25,9 +29,9 @@ func main() {
 	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
 	router.Handle("/", indexHandler).Methods("GET")
 
-	serverAddr := ":8080"
+	serverAddr := *addr
 	log.Printf("Starting server on %s", serverAddr)
-	log.Printf("Server available at http://localhost%s", serverAddr)
+	log.Printf("Server available at http://%s", serverAddr)
 	log.Printf("Available endpoints:")
 	log.Printf("  POST /update/{type}/{name}/{value} - add metric")
 	log.Printf("  GET  /value/{type}/{name} - get metric value")
