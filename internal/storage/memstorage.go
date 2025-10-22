@@ -35,7 +35,8 @@ func (s *MemStorage) SetGauge(name string, value float64) {
 func (s *MemStorage) SetCounter(name string, value int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.counters[name] = value
+	// counter должен накапливать значения
+	s.counters[name] += value
 }
 
 func (s *MemStorage) GetGauge(name string) (float64, bool) {
