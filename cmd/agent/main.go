@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,7 +19,7 @@ func main() {
 	flag.Parse()
 
 	serverURL := *addrFlag
-	// Добавляем протокол, если его нет
+
 	if !hasProtocol(serverURL) {
 		serverURL = "http://" + serverURL
 	}
@@ -43,7 +44,6 @@ func main() {
 	log.Println("Agent stopped")
 }
 
-// hasProtocol проверяет, содержит ли URL протокол
 func hasProtocol(url string) bool {
-	return len(url) > 7 && (url[0:7] == "http://" || url[0:8] == "https://")
+	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }

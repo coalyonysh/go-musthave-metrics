@@ -2,6 +2,7 @@ package agent
 
 import (
 	"log"
+	"sync"
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/client"
@@ -14,6 +15,8 @@ type Agent struct {
 	pollInterval   time.Duration
 	reportInterval time.Duration
 	done           chan bool
+	metricsMutex   sync.RWMutex
+	metrics        []models.Metric
 }
 
 func NewAgent(serverURL string, pollInterval, reportInterval time.Duration) *Agent {
@@ -23,6 +26,8 @@ func NewAgent(serverURL string, pollInterval, reportInterval time.Duration) *Age
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
 		done:           make(chan bool),
+		metricsMutex:   sync.RWMutex{},
+		metrics:        nil,
 	}
 }
 
@@ -33,15 +38,15 @@ func (a *Agent) Start() {
 	pollTicker := time.NewTicker(a.pollInterval)
 	reportTicker := time.NewTicker(a.reportInterval)
 
-	var metrics []models.Metric
-
 	for {
 		select {
 		case <-pollTicker.C:
-			metrics = a.collector.CollectMetrics()
+			metrics := a.collector.CollectMetrics()
+			a.setMetrics(metrics)
 			log.Printf("Collected %d metrics", len(metrics))
 
 		case <-reportTicker.C:
+			metrics := a.getMetrics()
 			if metrics != nil {
 				a.sendMetrics(metrics)
 			}
@@ -66,4 +71,16 @@ func (a *Agent) sendMetrics(metrics []models.Metric) {
 		}
 	}
 	log.Printf("Sent %d metrics to server", len(metrics))
+}
+
+func (a *Agent) setMetrics(metrics []models.Metric) {
+	a.metricsMutex.Lock()
+	defer a.metricsMutex.Unlock()
+	a.metrics = metrics
+}
+
+func (a *Agent) getMetrics() []models.Metric {
+	a.metricsMutex.RLock()
+	defer a.metricsMutex.RUnlock()
+	return a.metrics
 }
