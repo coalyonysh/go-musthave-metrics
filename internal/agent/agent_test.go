@@ -107,7 +107,7 @@ func TestAgent_SendMetrics_WithError(t *testing.T) {
 
 func TestAgent_Stop(t *testing.T) {
 	agent := &Agent{
-		done: make(chan bool, 1),
+		done: make(chan struct{}, 1),
 	}
 
 	// Тест не блокируется

@@ -11,10 +11,11 @@ import (
 
 type Agent struct {
 	collector      *MetricsCollector
-	client         client.HTTPClient
+	client         client.MetricSender
 	pollInterval   time.Duration
 	reportInterval time.Duration
-	done           chan bool
+	done           chan struct{}
+	stopOnce       sync.Once
 	metricsMutex   sync.RWMutex
 	metrics        []models.Metric
 }
@@ -25,7 +26,7 @@ func NewAgent(serverURL string, pollInterval, reportInterval time.Duration) *Age
 		client:         client.NewMetricHTTPClient(serverURL),
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
-		done:           make(chan bool),
+		done:           make(chan struct{}),
 		metricsMutex:   sync.RWMutex{},
 		metrics:        nil,
 	}
@@ -60,7 +61,9 @@ func (a *Agent) Start() {
 }
 
 func (a *Agent) Stop() {
-	a.done <- true
+	a.stopOnce.Do(func() {
+		close(a.done)
+	})
 }
 
 func (a *Agent) sendMetrics(metrics []models.Metric) {

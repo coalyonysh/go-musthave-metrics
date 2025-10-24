@@ -10,7 +10,7 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 )
 
-type HTTPClient interface {
+type MetricSender interface {
 	SendMetric(metric models.Metric) error
 }
 
