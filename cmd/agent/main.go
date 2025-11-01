@@ -5,16 +5,42 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/agent"
 )
 
+// getEnv возвращает значение переменной окружения или значение по умолчанию
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// getEnvInt возвращает целочисленное значение переменной окружения или значение по умолчанию
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+		log.Printf("Invalid value for %s: %s, using default: %d", key, value, defaultValue)
+	}
+	return defaultValue
+}
+
 func main() {
-	addrFlag := flag.String("a", "localhost:8080", "server address")
-	reportSec := flag.Int("r", 10, "report interval in seconds")
-	pollSec := flag.Int("p", 2, "poll interval in seconds")
+	// Значения по умолчанию из переменных окружения
+	defaultAddr := getEnv("ADDRESS", "localhost:8080")
+	defaultReportSec := getEnvInt("REPORT_INTERVAL", 10)
+	defaultPollSec := getEnvInt("POLL_INTERVAL", 2)
+
+	// Флаги (приоритет у переменных окружения)
+	addrFlag := flag.String("a", defaultAddr, "server address")
+	reportSec := flag.Int("r", defaultReportSec, "report interval in seconds")
+	pollSec := flag.Int("p", defaultPollSec, "poll interval in seconds")
 	flag.Parse()
 
 	config := &agent.Config{

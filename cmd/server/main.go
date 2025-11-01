@@ -4,15 +4,31 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/gorilla/mux"
 )
 
+// getEnv возвращает значение переменной окружения или значение по умолчанию
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 func main() {
-	addr := flag.String("a", "localhost:8080", "http server address")
+	// Получаем значение по умолчанию из переменной окружения
+	defaultAddr := getEnv("ADDRESS", "localhost:8080")
+
+	// Определяем флаг с приоритетом переменной окружения как значения по умолчанию
+	addr := flag.String("a", defaultAddr, "http server address")
 	flag.Parse()
+
+	// Финальный адрес сервера (флаг имеет высший приоритет)
+	serverAddr := *addr
 
 	memStorage := storage.NewMemStorage()
 
@@ -29,7 +45,6 @@ func main() {
 	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
 	router.Handle("/", indexHandler).Methods("GET")
 
-	serverAddr := *addr
 	log.Printf("Starting server on %s", serverAddr)
 	log.Printf("Server available at http://%s", serverAddr)
 	log.Printf("Available endpoints:")
