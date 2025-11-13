@@ -24,6 +24,9 @@ func (h *IndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Устанавливаем Content-Type для правильной работы gzip middleware
+	w.Header().Set("Content-Type", "text/html")
+
 	gauges := h.storage.GetAllGauges()
 	counters := h.storage.GetAllCounters()
 
