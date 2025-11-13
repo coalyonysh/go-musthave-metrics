@@ -113,17 +113,17 @@ func main() {
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
-	router.StrictSlash(true) // Разрешаем обработку завершающих слэшей
 
 	// Добавляем middleware логирования ко всем маршрутам
 	router.Use(WithLogging)
 
 	// Регистрируем маршруты
 	// Сначала регистрируем JSON эндпоинты (более специфичные по методу)
-	router.Handle("/update", updateJSONHandler).Methods("POST")
-	router.Handle("/update/", updateJSONHandler).Methods("POST")
-	router.Handle("/value", valueJSONHandler).Methods("POST")
-	router.Handle("/value/", valueJSONHandler).Methods("POST")
+	// Используем Path() для точного сопоставления
+	router.Path("/update").Handler(updateJSONHandler).Methods("POST")
+	router.Path("/update/").Handler(updateJSONHandler).Methods("POST")
+	router.Path("/value").Handler(valueJSONHandler).Methods("POST")
+	router.Path("/value/").Handler(valueJSONHandler).Methods("POST")
 	// Затем регистрируем маршруты с параметрами
 	router.Handle("/update/{type}/{name}/{value}", updateHandler).Methods("POST")
 	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
