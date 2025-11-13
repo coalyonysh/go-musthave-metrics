@@ -28,8 +28,9 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверяем Content-Type (может содержать дополнительные параметры, например charset)
+	// Если Content-Type не указан, пытаемся обработать как JSON
 	contentType := r.Header.Get("Content-Type")
-	if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
+	if contentType != "" && !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
 	}
