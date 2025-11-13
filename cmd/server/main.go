@@ -4,6 +4,8 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
@@ -17,6 +19,26 @@ import (
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+// getEnvBool возвращает булево значение переменной окружения или значение по умолчанию
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			return parsed
+		}
+	}
+	return defaultValue
+}
+
+// getEnvInt возвращает целочисленное значение переменной окружения или значение по умолчанию
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
+		}
 	}
 	return defaultValue
 }
@@ -93,24 +115,65 @@ func main() {
 	// делаем регистратор SugaredLogger
 	sugar = *logger.Sugar()
 
-	// Получаем значение по умолчанию из переменной окружения
-	defaultAddr := getEnv("ADDRESS", "localhost:8080")
-
-	// Определяем флаг с приоритетом переменной окружения как значения по умолчанию
-	addr := flag.String("a", defaultAddr, "http server address")
+	// Определяем флаги со значениями по умолчанию
+	addr := flag.String("a", "localhost:8080", "http server address")
+	storeInterval := flag.Int("i", 300, "store interval in seconds (0 = sync)")
+	filePath := flag.String("f", "/tmp/metrics-db.json", "file storage path")
+	restore := flag.Bool("r", true, "restore metrics from file on startup")
 	flag.Parse()
 
-	// Финальный адрес сервера (флаг имеет высший приоритет)
-	serverAddr := *addr
+	// Приоритет: переменная окружения > флаг > значение по умолчанию
+	serverAddr := getEnv("ADDRESS", *addr)
+	storeIntervalSec := getEnvInt("STORE_INTERVAL", *storeInterval)
+	storagePath := getEnv("FILE_STORAGE_PATH", *filePath)
+	shouldRestore := getEnvBool("RESTORE", *restore)
 
 	memStorage := storage.NewMemStorage()
 
+	// Загружаем метрики при старте, если нужно
+	if shouldRestore && storagePath != "" {
+		if err := storage.LoadMetrics(memStorage, storagePath); err != nil {
+			sugar.Warnw("Failed to load metrics from file", "error", err, "path", storagePath)
+		} else {
+			sugar.Infow("Metrics loaded from file", "path", storagePath)
+		}
+	}
+
+	// Создаем функцию сохранения
+	var saveMutex sync.Mutex
+	saveFunc := func() {
+		saveMutex.Lock()
+		defer saveMutex.Unlock()
+		if err := storage.SaveMetrics(memStorage, storagePath); err != nil {
+			sugar.Errorw("Failed to save metrics", "error", err, "path", storagePath)
+		} else {
+			sugar.Debugw("Metrics saved", "path", storagePath)
+		}
+	}
+
+	// Если interval=0, используем синхронное сохранение при каждом обновлении
+	var finalStorage storage.Storage = memStorage
+	if storeIntervalSec == 0 && storagePath != "" {
+		finalStorage = storage.NewSyncStorage(memStorage, saveFunc)
+		sugar.Infow("Synchronous saving enabled", "path", storagePath)
+	} else if storeIntervalSec > 0 && storagePath != "" {
+		// Запускаем периодическое сохранение
+		go func() {
+			ticker := time.NewTicker(time.Duration(storeIntervalSec) * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				saveFunc()
+			}
+		}()
+		sugar.Infow("Periodic saving enabled", "interval", storeIntervalSec, "path", storagePath)
+	}
+
 	// Создаем хендлеры
-	updateHandler := handlers.NewUpdateHandler(memStorage)
-	valueHandler := handlers.NewValueHandler(memStorage)
-	updateJSONHandler := handlers.NewUpdateJSONHandler(memStorage)
-	valueJSONHandler := handlers.NewValueJSONHandler(memStorage)
-	indexHandler := handlers.NewIndexHandler(memStorage)
+	updateHandler := handlers.NewUpdateHandler(finalStorage)
+	valueHandler := handlers.NewValueHandler(finalStorage)
+	updateJSONHandler := handlers.NewUpdateJSONHandler(finalStorage)
+	valueJSONHandler := handlers.NewValueJSONHandler(finalStorage)
+	indexHandler := handlers.NewIndexHandler(finalStorage)
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
@@ -139,6 +202,9 @@ func main() {
 	sugar.Infow(
 		"Starting server",
 		"addr", serverAddr,
+		"store_interval", storeIntervalSec,
+		"file_path", storagePath,
+		"restore", shouldRestore,
 	)
 	sugar.Infow(
 		"Available endpoints",
