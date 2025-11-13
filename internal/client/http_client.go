@@ -2,8 +2,10 @@ package client
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -64,7 +66,7 @@ func (c *MetricHTTPClient) SendMetric(metric models.Metric) error {
 	return nil
 }
 
-// SendMetricJSON отправляет метрику в JSON формате через POST /update
+// SendMetricJSON отправляет метрику в JSON формате через POST /update с gzip сжатием
 func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 	// Валидация метрики
 	if metric.MType == models.Counter && metric.Delta == nil {
@@ -80,14 +82,27 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 		return fmt.Errorf("failed to marshal metric to JSON: %w", err)
 	}
 
+	// Сжимаем данные с помощью gzip
+	var compressedData bytes.Buffer
+	gzWriter := gzip.NewWriter(&compressedData)
+	if _, err := gzWriter.Write(jsonData); err != nil {
+		gzWriter.Close()
+		return fmt.Errorf("failed to compress data: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
 	url := fmt.Sprintf("%s/update", c.baseURL)
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, &compressedData)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -95,8 +110,25 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 	}
 	defer resp.Body.Close()
 
+	// Распаковываем ответ, если он сжат
+	var responseBody io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		responseBody = gzReader
+	}
+
+	// Читаем ответ (для проверки, что все в порядке)
+	bodyBytes, err := io.ReadAll(responseBody)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned non-200 status: %d", resp.StatusCode)
+		return fmt.Errorf("server returned non-200 status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var valueStr string

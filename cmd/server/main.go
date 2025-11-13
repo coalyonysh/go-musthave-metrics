@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
+	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
@@ -114,7 +115,12 @@ func main() {
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
 
-	// Добавляем middleware логирования ко всем маршрутам
+	// Добавляем middleware в правильном порядке:
+	// 1. Сначала распаковка запросов (GzipDecompress)
+	// 2. Затем сжатие ответов (GzipCompress)
+	// 3. В конце логирование (WithLogging)
+	router.Use(middleware.GzipDecompress)
+	router.Use(middleware.GzipCompress)
 	router.Use(WithLogging)
 
 	// Регистрируем маршруты
