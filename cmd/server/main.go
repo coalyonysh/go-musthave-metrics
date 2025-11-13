@@ -107,6 +107,8 @@ func main() {
 	// Создаем хендлеры
 	updateHandler := handlers.NewUpdateHandler(memStorage)
 	valueHandler := handlers.NewValueHandler(memStorage)
+	updateJSONHandler := handlers.NewUpdateJSONHandler(memStorage)
+	valueJSONHandler := handlers.NewValueJSONHandler(memStorage)
 	indexHandler := handlers.NewIndexHandler(memStorage)
 
 	// Создаем роутер с помощью gorilla/mux
@@ -118,6 +120,8 @@ func main() {
 	// Регистрируем маршруты
 	router.Handle("/update/{type}/{name}/{value}", updateHandler).Methods("POST")
 	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
+	router.Handle("/update", updateJSONHandler).Methods("POST")
+	router.Handle("/value", valueJSONHandler).Methods("POST")
 	router.Handle("/", indexHandler).Methods("GET")
 
 	// записываем в лог, что сервер запускается
@@ -127,8 +131,10 @@ func main() {
 	)
 	sugar.Infow(
 		"Available endpoints",
-		"POST /update/{type}/{name}/{value}", "add metric",
-		"GET /value/{type}/{name}", "get metric value",
+		"POST /update/{type}/{name}/{value}", "add metric (URL params)",
+		"POST /update", "add metric (JSON)",
+		"GET /value/{type}/{name}", "get metric value (URL params)",
+		"POST /value", "get metric value (JSON)",
 		"GET /", "metrics dashboard",
 	)
 

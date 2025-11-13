@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,25 +30,28 @@ func NewMetricHTTPClient(baseURL string) *MetricHTTPClient {
 }
 
 func (c *MetricHTTPClient) SendMetric(metric models.Metric) error {
-	var value string
-
-	if metric.MType == models.Counter && metric.Delta != nil {
-		value = fmt.Sprintf("%d", *metric.Delta)
-	} else if metric.MType == models.Gauge && metric.Value != nil {
-		value = fmt.Sprintf("%g", *metric.Value)
-	} else {
-		return fmt.Errorf("invalid metric: missing value for type %s", metric.MType)
+	// Валидация метрики
+	if metric.MType == models.Counter && metric.Delta == nil {
+		return fmt.Errorf("invalid metric: missing delta for counter type")
+	}
+	if metric.MType == models.Gauge && metric.Value == nil {
+		return fmt.Errorf("invalid metric: missing value for gauge type")
 	}
 
-	url := fmt.Sprintf("%s/update/%s/%s/%s",
-		c.baseURL, metric.MType, metric.ID, value)
+	// Создаем JSON тело запроса
+	jsonData, err := json.Marshal(metric)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metric to JSON: %w", err)
+	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(nil))
+	url := fmt.Sprintf("%s/update", c.baseURL)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -59,6 +63,13 @@ func (c *MetricHTTPClient) SendMetric(metric models.Metric) error {
 		return fmt.Errorf("server returned non-200 status: %d", resp.StatusCode)
 	}
 
-	log.Printf("Successfully sent metric: %s/%s/%s", metric.MType, metric.ID, value)
+	var valueStr string
+	if metric.MType == models.Counter && metric.Delta != nil {
+		valueStr = fmt.Sprintf("%d", *metric.Delta)
+	} else if metric.MType == models.Gauge && metric.Value != nil {
+		valueStr = fmt.Sprintf("%g", *metric.Value)
+	}
+
+	log.Printf("Successfully sent metric: %s/%s/%s", metric.MType, metric.ID, valueStr)
 	return nil
 }
