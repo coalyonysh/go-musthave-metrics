@@ -54,6 +54,10 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Обрабатываем метрику в зависимости от типа
+	var responseMetric models.Metric
+	responseMetric.ID = metric.ID
+	responseMetric.MType = metric.MType
+
 	switch metric.MType {
 	case models.Gauge:
 		if metric.Value == nil {
@@ -61,6 +65,9 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.storage.SetGauge(metric.ID, *metric.Value)
+		// Получаем актуальное значение из storage
+		value, _ := h.storage.GetGauge(metric.ID)
+		responseMetric.Value = &value
 		log.Printf("Metric of type GAUGE with name %s set with value %g", metric.ID, *metric.Value)
 
 	case models.Counter:
@@ -69,6 +76,9 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.storage.SetCounter(metric.ID, *metric.Delta)
+		// Получаем накопленное значение из storage
+		delta, _ := h.storage.GetCounter(metric.ID)
+		responseMetric.Delta = &delta
 		log.Printf("Metric of type COUNTER with name %s set with delta %d", metric.ID, *metric.Delta)
 
 	default:
@@ -82,7 +92,7 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Возвращаем обновленную метрику в JSON формате
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(metric); err != nil {
+	if err := encoder.Encode(responseMetric); err != nil {
 		log.Printf("Failed to encode response: %v", err)
 	}
 }
