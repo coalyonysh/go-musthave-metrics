@@ -119,12 +119,14 @@ func main() {
 	router.Use(WithLogging)
 
 	// Регистрируем маршруты
-	router.Handle("/update/{type}/{name}/{value}", updateHandler).Methods("POST")
-	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
+	// Сначала регистрируем JSON эндпоинты (более специфичные по методу)
 	router.Handle("/update", updateJSONHandler).Methods("POST")
 	router.Handle("/update/", updateJSONHandler).Methods("POST")
 	router.Handle("/value", valueJSONHandler).Methods("POST")
 	router.Handle("/value/", valueJSONHandler).Methods("POST")
+	// Затем регистрируем маршруты с параметрами
+	router.Handle("/update/{type}/{name}/{value}", updateHandler).Methods("POST")
+	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
 	router.Handle("/", indexHandler).Methods("GET")
 
 	// записываем в лог, что сервер запускается
