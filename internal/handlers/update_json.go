@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
@@ -26,8 +27,9 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверяем Content-Type
-	if r.Header.Get("Content-Type") != "application/json" {
+	// Проверяем Content-Type (может содержать дополнительные параметры, например charset)
+	contentType := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
 	}
