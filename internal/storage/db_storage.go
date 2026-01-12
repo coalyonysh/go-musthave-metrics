@@ -2,9 +2,11 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/lib/pq"
 )
 
 type DBStorage struct {
@@ -78,10 +80,25 @@ func (s *DBStorage) GetAllGauges() map[string]float64 {
 	return result
 }
 
+// isRetriableDBError проверяет, является ли ошибка БД retriable
+func isRetriableDBError(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		// Class 08 — Connection Exception (08XXX)
+		if len(pqErr.Code) >= 2 && pqErr.Code[:2] == "08" {
+			return true
+		}
+	}
+	return false
+}
+
 // SetMetricsBatch устанавливает батч метрик в транзакции
 func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 	tx, err := s.db.Begin()
 	if err != nil {
+		if isRetriableDBError(err) {
+			return fmt.Errorf("retriable error: %w", err)
+		}
 		return err
 	}
 	defer tx.Rollback()
@@ -96,6 +113,9 @@ func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 					ON CONFLICT (name, type) DO UPDATE SET value = EXCLUDED.value`,
 					metric.ID, "gauge", *metric.Value)
 				if err != nil {
+					if isRetriableDBError(err) {
+						return fmt.Errorf("retriable error: %w", err)
+					}
 					return err
 				}
 			}
@@ -107,13 +127,23 @@ func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 					ON CONFLICT (name, type) DO UPDATE SET delta = metrics.delta + EXCLUDED.delta`,
 					metric.ID, "counter", *metric.Delta)
 				if err != nil {
+					if isRetriableDBError(err) {
+						return fmt.Errorf("retriable error: %w", err)
+					}
 					return err
 				}
 			}
 		}
 	}
 
-	return tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		if isRetriableDBError(err) {
+			return fmt.Errorf("retriable error: %w", err)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *DBStorage) GetAllCounters() map[string]int64 {
