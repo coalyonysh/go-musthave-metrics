@@ -141,3 +141,51 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 	log.Printf("Successfully sent metric: %s/%s/%s", metric.MType, metric.ID, valueStr)
 	return nil
 }
+
+// SendMetricsBatch отправляет батч метрик в JSON формате через POST /updates с gzip сжатием
+func (c *MetricHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
+	if len(metrics) == 0 {
+		return nil // не отправлять пустые батчи
+	}
+
+	// Создаем JSON тело запроса
+	jsonData, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics to JSON: %w", err)
+	}
+
+	// Сжимаем данные с помощью gzip
+	var compressedData bytes.Buffer
+	gzWriter := gzip.NewWriter(&compressedData)
+	if _, err := gzWriter.Write(jsonData); err != nil {
+		gzWriter.Close()
+		return fmt.Errorf("failed to compress data: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/updates", c.baseURL)
+
+	req, err := http.NewRequest("POST", url, &compressedData)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned non-200 status: %d", resp.StatusCode)
+	}
+
+	log.Printf("Successfully sent %d metrics batch to server", len(metrics))
+	return nil
+}

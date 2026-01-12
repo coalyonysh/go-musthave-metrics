@@ -2,6 +2,8 @@ package storage
 
 import (
 	"sync"
+
+	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 )
 
 type Storage interface {
@@ -11,6 +13,7 @@ type Storage interface {
 	GetCounter(name string) (int64, bool)
 	GetAllGauges() map[string]float64
 	GetAllCounters() map[string]int64
+	SetMetricsBatch(metrics []models.Metric) error
 }
 
 type MemStorage struct {
@@ -62,6 +65,24 @@ func (s *MemStorage) GetAllGauges() map[string]float64 {
 		result[k] = v
 	}
 	return result
+}
+
+func (s *MemStorage) SetMetricsBatch(metrics []models.Metric) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value != nil {
+				s.gauges[metric.ID] = *metric.Value
+			}
+		case models.Counter:
+			if metric.Delta != nil {
+				s.counters[metric.ID] += *metric.Delta
+			}
+		}
+	}
+	return nil
 }
 
 func (s *MemStorage) GetAllCounters() map[string]int64 {

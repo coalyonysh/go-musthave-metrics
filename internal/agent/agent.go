@@ -67,7 +67,7 @@ func (a *Agent) Stop() {
 }
 
 func (a *Agent) sendMetrics(metrics []models.Metric) {
-	// Используем JSON клиент для отправки метрик через POST /update
+	// Используем JSON клиент для отправки батча метрик через POST /updates
 	jsonClient, ok := a.client.(*client.MetricHTTPClient)
 	if !ok {
 		// Fallback на старый метод, если клиент не MetricHTTPClient
@@ -81,10 +81,16 @@ func (a *Agent) sendMetrics(metrics []models.Metric) {
 		return
 	}
 
-	for _, metric := range metrics {
-		err := jsonClient.SendMetricJSON(metric)
-		if err != nil {
-			log.Printf("Failed to send metric %s: %v", metric.ID, err)
+	// Отправляем батч
+	err := jsonClient.SendMetricsBatch(metrics)
+	if err != nil {
+		log.Printf("Failed to send metrics batch: %v", err)
+		// Fallback: отправляем по одной
+		for _, metric := range metrics {
+			err := jsonClient.SendMetricJSON(metric)
+			if err != nil {
+				log.Printf("Failed to send metric %s: %v", metric.ID, err)
+			}
 		}
 	}
 	log.Printf("Sent %d metrics to server", len(metrics))

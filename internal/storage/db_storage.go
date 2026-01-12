@@ -3,6 +3,8 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+
+	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 )
 
 type DBStorage struct {
@@ -74,6 +76,44 @@ func (s *DBStorage) GetAllGauges() map[string]float64 {
 		return nil
 	}
 	return result
+}
+
+// SetMetricsBatch устанавливает батч метрик в транзакции
+func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case "gauge":
+			if metric.Value != nil {
+				_, err = tx.Exec(`
+					INSERT INTO metrics (name, type, value)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (name, type) DO UPDATE SET value = EXCLUDED.value`,
+					metric.ID, "gauge", *metric.Value)
+				if err != nil {
+					return err
+				}
+			}
+		case "counter":
+			if metric.Delta != nil {
+				_, err = tx.Exec(`
+					INSERT INTO metrics (name, type, delta)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (name, type) DO UPDATE SET delta = metrics.delta + EXCLUDED.delta`,
+					metric.ID, "counter", *metric.Delta)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *DBStorage) GetAllCounters() map[string]int64 {
