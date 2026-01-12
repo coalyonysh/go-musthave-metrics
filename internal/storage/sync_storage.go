@@ -2,11 +2,13 @@ package storage
 
 import (
 	"sync"
+
+	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 )
 
 // SyncStorage обертка для Storage с поддержкой синхронного сохранения
 type SyncStorage struct {
-	Storage Storage
+	Storage  Storage
 	saveFunc func()
 	mu       sync.RWMutex
 }
@@ -23,7 +25,7 @@ func (s *SyncStorage) SetGauge(name string, value float64) {
 	s.mu.Lock()
 	s.Storage.SetGauge(name, value)
 	s.mu.Unlock()
-	
+
 	// Сохраняем синхронно, если функция сохранения задана
 	if s.saveFunc != nil {
 		s.saveFunc()
@@ -34,7 +36,7 @@ func (s *SyncStorage) SetCounter(name string, value int64) {
 	s.mu.Lock()
 	s.Storage.SetCounter(name, value)
 	s.mu.Unlock()
-	
+
 	// Сохраняем синхронно, если функция сохранения задана
 	if s.saveFunc != nil {
 		s.saveFunc()
@@ -65,3 +67,14 @@ func (s *SyncStorage) GetAllCounters() map[string]int64 {
 	return s.Storage.GetAllCounters()
 }
 
+func (s *SyncStorage) SetMetricsBatch(metrics []models.Metric) error {
+	s.mu.Lock()
+	err := s.Storage.SetMetricsBatch(metrics)
+	s.mu.Unlock()
+
+	// Сохраняем синхронно, если функция сохранения задана
+	if s.saveFunc != nil {
+		s.saveFunc()
+	}
+	return err
+}

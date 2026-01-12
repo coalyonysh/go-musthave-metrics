@@ -219,6 +219,7 @@ func main() {
 	valueJSONHandler := handlers.NewValueJSONHandler(finalStorage)
 	indexHandler := handlers.NewIndexHandler(finalStorage)
 	pingHandler := handlers.NewPingHandler(db)
+	updatesHandler := handlers.NewUpdatesHandler(finalStorage)
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
@@ -236,6 +237,8 @@ func main() {
 	// Используем Path() для точного сопоставления
 	router.Path("/update").Handler(updateJSONHandler).Methods("POST")
 	router.Path("/update/").Handler(updateJSONHandler).Methods("POST")
+	router.Path("/updates").Handler(updatesHandler).Methods("POST")
+	router.Path("/updates/").Handler(updatesHandler).Methods("POST")
 	router.Path("/value").Handler(valueJSONHandler).Methods("POST")
 	router.Path("/value/").Handler(valueJSONHandler).Methods("POST")
 	// Затем регистрируем маршруты с параметрами
@@ -256,6 +259,7 @@ func main() {
 		"Available endpoints",
 		"POST /update/{type}/{name}/{value}", "add metric (URL params)",
 		"POST /update", "add metric (JSON)",
+		"POST /updates", "add metrics batch (JSON)",
 		"GET /value/{type}/{name}", "get metric value (URL params)",
 		"POST /value", "get metric value (JSON)",
 		"GET /ping", "database ping",
