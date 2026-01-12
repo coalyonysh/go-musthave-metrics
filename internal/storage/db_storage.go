@@ -70,6 +70,9 @@ func (s *DBStorage) GetAllGauges() map[string]float64 {
 			result[name] = value
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil
+	}
 	return result
 }
 
@@ -87,6 +90,9 @@ func (s *DBStorage) GetAllCounters() map[string]int64 {
 		if err := rows.Scan(&name, &value); err == nil {
 			result[name] = value
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil
 	}
 	return result
 }
