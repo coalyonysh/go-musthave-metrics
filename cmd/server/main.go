@@ -12,6 +12,9 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
+	migrate "github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
@@ -144,46 +147,69 @@ func main() {
 			sugar.Fatalw("Failed to ping database", "error", err, "dsn", databaseDSN)
 		}
 		sugar.Infow("Database connected", "dsn", databaseDSN)
-	}
 
-	memStorage := storage.NewMemStorage()
-
-	// Загружаем метрики при старте, если нужно
-	if shouldRestore && storagePath != "" {
-		if err := storage.LoadMetrics(memStorage, storagePath); err != nil {
-			sugar.Warnw("Failed to load metrics from file", "error", err, "path", storagePath)
-		} else {
-			sugar.Infow("Metrics loaded from file", "path", storagePath)
+		// Запуск миграций
+		driver, err := postgres.WithInstance(db, &postgres.Config{})
+		if err != nil {
+			sugar.Fatalw("Failed to create migration driver", "error", err)
 		}
-	}
-
-	// Создаем функцию сохранения
-	var saveMutex sync.Mutex
-	saveFunc := func() {
-		saveMutex.Lock()
-		defer saveMutex.Unlock()
-		if err := storage.SaveMetrics(memStorage, storagePath); err != nil {
-			sugar.Errorw("Failed to save metrics", "error", err, "path", storagePath)
-		} else {
-			sugar.Debugw("Metrics saved", "path", storagePath)
+		m, err := migrate.NewWithDatabaseInstance(
+			"file://migrations",
+			"postgres", driver)
+		if err != nil {
+			sugar.Fatalw("Failed to create migrate instance", "error", err)
 		}
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			sugar.Fatalw("Failed to run migrations", "error", err)
+		}
+		sugar.Infow("Migrations completed")
 	}
 
-	// Если interval=0, используем синхронное сохранение при каждом обновлении
-	var finalStorage storage.Storage = memStorage
-	if storeIntervalSec == 0 && storagePath != "" {
-		finalStorage = storage.NewSyncStorage(memStorage, saveFunc)
-		sugar.Infow("Synchronous saving enabled", "path", storagePath)
-	} else if storeIntervalSec > 0 && storagePath != "" {
-		// Запускаем периодическое сохранение
-		go func() {
-			ticker := time.NewTicker(time.Duration(storeIntervalSec) * time.Second)
-			defer ticker.Stop()
-			for range ticker.C {
-				saveFunc()
+	var finalStorage storage.Storage
+
+	if databaseDSN != "" {
+		finalStorage = storage.NewDBStorage(db)
+		sugar.Infow("Using database storage")
+	} else {
+		memStorage := storage.NewMemStorage()
+
+		// Загружаем метрики при старте, если нужно
+		if shouldRestore && storagePath != "" {
+			if err := storage.LoadMetrics(memStorage, storagePath); err != nil {
+				sugar.Warnw("Failed to load metrics from file", "error", err, "path", storagePath)
+			} else {
+				sugar.Infow("Metrics loaded from file", "path", storagePath)
 			}
-		}()
-		sugar.Infow("Periodic saving enabled", "interval", storeIntervalSec, "path", storagePath)
+		}
+
+		// Создаем функцию сохранения
+		var saveMutex sync.Mutex
+		saveFunc := func() {
+			saveMutex.Lock()
+			defer saveMutex.Unlock()
+			if err := storage.SaveMetrics(memStorage, storagePath); err != nil {
+				sugar.Errorw("Failed to save metrics", "error", err, "path", storagePath)
+			} else {
+				sugar.Debugw("Metrics saved", "path", storagePath)
+			}
+		}
+
+		// Если interval=0, используем синхронное сохранение при каждом обновлении
+		finalStorage = memStorage
+		if storeIntervalSec == 0 && storagePath != "" {
+			finalStorage = storage.NewSyncStorage(memStorage, saveFunc)
+			sugar.Infow("Synchronous saving enabled", "path", storagePath)
+		} else if storeIntervalSec > 0 && storagePath != "" {
+			// Запускаем периодическое сохранение
+			go func() {
+				ticker := time.NewTicker(time.Duration(storeIntervalSec) * time.Second)
+				defer ticker.Stop()
+				for range ticker.C {
+					saveFunc()
+				}
+			}()
+			sugar.Infow("Periodic saving enabled", "interval", storeIntervalSec, "path", storagePath)
+		}
 	}
 
 	// Создаем хендлеры
