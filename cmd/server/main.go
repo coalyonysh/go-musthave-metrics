@@ -13,7 +13,7 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/gorilla/mux"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -136,7 +136,7 @@ func main() {
 	// Инициализация БД, если DSN указан
 	if databaseDSN != "" {
 		var err error
-		db, err = sql.Open("sqlite3", databaseDSN)
+		db, err = sql.Open("postgres", databaseDSN)
 		if err != nil {
 			sugar.Fatalw("Failed to open database", "error", err, "dsn", databaseDSN)
 		}
