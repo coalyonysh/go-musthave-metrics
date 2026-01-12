@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/gorilla/mux"
+	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
 
@@ -102,6 +104,7 @@ func WithLogging(h http.Handler) http.Handler {
 }
 
 var sugar zap.SugaredLogger
+var db *sql.DB
 
 func main() {
 	// создаём предустановленный регистратор zap
@@ -120,6 +123,7 @@ func main() {
 	storeInterval := flag.Int("i", 300, "store interval in seconds (0 = sync)")
 	filePath := flag.String("f", "/tmp/metrics-db.json", "file storage path")
 	restore := flag.Bool("r", true, "restore metrics from file on startup")
+	dsn := flag.String("d", "", "database DSN")
 	flag.Parse()
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
@@ -127,6 +131,20 @@ func main() {
 	storeIntervalSec := getEnvInt("STORE_INTERVAL", *storeInterval)
 	storagePath := getEnv("FILE_STORAGE_PATH", *filePath)
 	shouldRestore := getEnvBool("RESTORE", *restore)
+	databaseDSN := getEnv("DATABASE_DSN", *dsn)
+
+	// Инициализация БД, если DSN указан
+	if databaseDSN != "" {
+		var err error
+		db, err = sql.Open("sqlite3", databaseDSN)
+		if err != nil {
+			sugar.Fatalw("Failed to open database", "error", err, "dsn", databaseDSN)
+		}
+		if err = db.Ping(); err != nil {
+			sugar.Fatalw("Failed to ping database", "error", err, "dsn", databaseDSN)
+		}
+		sugar.Infow("Database connected", "dsn", databaseDSN)
+	}
 
 	memStorage := storage.NewMemStorage()
 
@@ -174,6 +192,7 @@ func main() {
 	updateJSONHandler := handlers.NewUpdateJSONHandler(finalStorage)
 	valueJSONHandler := handlers.NewValueJSONHandler(finalStorage)
 	indexHandler := handlers.NewIndexHandler(finalStorage)
+	pingHandler := handlers.NewPingHandler(db)
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
@@ -196,6 +215,7 @@ func main() {
 	// Затем регистрируем маршруты с параметрами
 	router.Handle("/update/{type}/{name}/{value}", updateHandler).Methods("POST")
 	router.Handle("/value/{type}/{name}", valueHandler).Methods("GET")
+	router.Handle("/ping", pingHandler).Methods("GET")
 	router.Handle("/", indexHandler).Methods("GET")
 
 	// записываем в лог, что сервер запускается
@@ -212,6 +232,7 @@ func main() {
 		"POST /update", "add metric (JSON)",
 		"GET /value/{type}/{name}", "get metric value (URL params)",
 		"POST /value", "get metric value (JSON)",
+		"GET /ping", "database ping",
 		"GET /", "metrics dashboard",
 	)
 
