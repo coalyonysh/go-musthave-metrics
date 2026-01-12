@@ -50,10 +50,7 @@ func isRetriableError(err error) bool {
 	}
 	// HTTP ошибки, связанные с соединением
 	var httpErr *url.Error
-	if errors.As(err, &httpErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &httpErr)
 }
 
 // retrySend выполняет функцию с повторными попытками
