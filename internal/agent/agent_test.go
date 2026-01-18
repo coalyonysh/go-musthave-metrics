@@ -31,8 +31,9 @@ func TestAgent_NewAgent(t *testing.T) {
 	serverURL := "http://localhost:8080"
 	pollInterval := 2 * time.Second
 	reportInterval := 10 * time.Second
+	rateLimit := 10
 
-	agent := NewAgent(serverURL, pollInterval, reportInterval, "")
+	agent := NewAgent(serverURL, pollInterval, reportInterval, "", rateLimit)
 
 	if agent == nil {
 		t.Fatal("Expected agent to be created, got nil")
@@ -46,6 +47,10 @@ func TestAgent_NewAgent(t *testing.T) {
 		t.Errorf("Expected reportInterval %v, got %v", reportInterval, agent.reportInterval)
 	}
 
+	if agent.rateLimit != rateLimit {
+		t.Errorf("Expected rateLimit %d, got %d", rateLimit, agent.rateLimit)
+	}
+
 	if agent.collector == nil {
 		t.Error("Expected collector to be initialized")
 	}
@@ -56,6 +61,10 @@ func TestAgent_NewAgent(t *testing.T) {
 
 	if agent.done == nil {
 		t.Error("Expected done channel to be initialized")
+	}
+
+	if agent.metricsChan == nil {
+		t.Error("Expected metricsChan to be initialized")
 	}
 }
 
@@ -107,7 +116,8 @@ func TestAgent_SendMetrics_WithError(t *testing.T) {
 
 func TestAgent_Stop(t *testing.T) {
 	agent := &Agent{
-		done: make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
+		metricsChan: make(chan []models.Metric, 1),
 	}
 
 	// Тест не блокируется

@@ -11,6 +11,7 @@ type Config struct {
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	Key            string
+	RateLimit      int
 }
 
 func (c *Config) Validate() error {
@@ -28,6 +29,10 @@ func (c *Config) Validate() error {
 
 	if c.ReportInterval <= 0 {
 		return fmt.Errorf("report interval must be positive")
+	}
+
+	if c.RateLimit <= 0 {
+		return fmt.Errorf("rate limit must be positive")
 	}
 
 	return nil
