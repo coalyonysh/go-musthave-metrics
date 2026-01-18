@@ -24,14 +24,16 @@ type MetricSender interface {
 type MetricHTTPClient struct {
 	baseURL    string
 	httpClient *http.Client
+	key        string
 }
 
-func NewMetricHTTPClient(baseURL string) *MetricHTTPClient {
+func NewMetricHTTPClient(baseURL string, key string) *MetricHTTPClient {
 	return &MetricHTTPClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		key: key,
 	}
 }
 

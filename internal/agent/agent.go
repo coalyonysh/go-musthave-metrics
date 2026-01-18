@@ -20,10 +20,10 @@ type Agent struct {
 	metrics        []models.Metric
 }
 
-func NewAgent(serverURL string, pollInterval, reportInterval time.Duration) *Agent {
+func NewAgent(serverURL string, pollInterval, reportInterval time.Duration, key string) *Agent {
 	return &Agent{
 		collector:      NewMetricsCollector(),
-		client:         client.NewMetricHTTPClient(serverURL),
+		client:         client.NewMetricHTTPClient(serverURL, key),
 		pollInterval:   pollInterval,
 		reportInterval: reportInterval,
 		done:           make(chan struct{}),
