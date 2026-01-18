@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/coalyonysh/go-musthave-metrics/pkg/signature"
 )
 
 type MetricSender interface {
@@ -146,6 +147,18 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+
+		// Добавляем хеш, если ключ задан
+		if c.key != "" {
+			hash := signature.CalculateHash(jsonData, c.key)
+			req.Header.Set("HashSHA256", hash)
+		}
+
+		// Добавляем хеш, если ключ задан
+		if c.key != "" {
+			hash := signature.CalculateHash(jsonData, c.key)
+			req.Header.Set("HashSHA256", hash)
+		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

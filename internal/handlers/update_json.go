@@ -1,23 +1,28 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
+	"github.com/coalyonysh/go-musthave-metrics/pkg/signature"
 )
 
 type UpdateJSONHandler struct {
 	storage storage.Storage
+	key     string
 }
 
-func NewUpdateJSONHandler(storage storage.Storage) *UpdateJSONHandler {
+func NewUpdateJSONHandler(storage storage.Storage, key string) *UpdateJSONHandler {
 	return &UpdateJSONHandler{
 		storage: storage,
+		key:     key,
 	}
 }
 
@@ -35,9 +40,25 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Читаем тело запроса
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем хеш, если ключ задан
+	if h.key != "" {
+		providedHash := r.Header.Get("HashSHA256")
+		if !signature.VerifyHash(bodyBytes, h.key, providedHash) {
+			http.Error(w, "Invalid hash", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Декодируем JSON из тела запроса
 	var metric models.Metric
-	decoder := json.NewDecoder(r.Body)
+	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
 	if err := decoder.Decode(&metric); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 		return
@@ -87,13 +108,26 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Сериализуем ответ
+	responseBytes, err := json.Marshal(responseMetric)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Вычисляем хеш ответа, если ключ задан
+	if h.key != "" {
+		hash := signature.CalculateHash(responseBytes, h.key)
+		w.Header().Set("HashSHA256", hash)
+	}
+
 	// Устанавливаем заголовок Content-Type
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	// Возвращаем обновленную метрику в JSON формате
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(responseMetric); err != nil {
-		log.Printf("Failed to encode response: %v", err)
+	if _, err := w.Write(responseBytes); err != nil {
+		log.Printf("Failed to write response: %v", err)
 	}
 }
