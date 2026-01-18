@@ -41,7 +41,8 @@ func isRetriableError(err error) bool {
 		return false
 	}
 	// Сетевые ошибки
-	if errors.Is(err, &net.OpError{}) {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
 		return true
 	}
 	// Таймауты
@@ -108,35 +109,35 @@ func (c *MetricHTTPClient) SendMetric(metric models.Metric) error {
 
 // SendMetricJSON отправляет метрику в JSON формате через POST /update с gzip сжатием
 func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
+	// Валидация метрики
+	if metric.MType == models.Counter && metric.Delta == nil {
+		return fmt.Errorf("invalid metric: missing delta for counter type")
+	}
+	if metric.MType == models.Gauge && metric.Value == nil {
+		return fmt.Errorf("invalid metric: missing value for gauge type")
+	}
+
+	// Создаем JSON тело запроса
+	jsonData, err := json.Marshal(metric)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metric to JSON: %w", err)
+	}
+
+	// Сжимаем данные с помощью gzip
+	var compressedData bytes.Buffer
+	gzWriter := gzip.NewWriter(&compressedData)
+	if _, err := gzWriter.Write(jsonData); err != nil {
+		gzWriter.Close()
+		return fmt.Errorf("failed to compress data: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
 	return retrySend(func() error {
-		// Валидация метрики
-		if metric.MType == models.Counter && metric.Delta == nil {
-			return fmt.Errorf("invalid metric: missing delta for counter type")
-		}
-		if metric.MType == models.Gauge && metric.Value == nil {
-			return fmt.Errorf("invalid metric: missing value for gauge type")
-		}
-
-		// Создаем JSON тело запроса
-		jsonData, err := json.Marshal(metric)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metric to JSON: %w", err)
-		}
-
-		// Сжимаем данные с помощью gzip
-		var compressedData bytes.Buffer
-		gzWriter := gzip.NewWriter(&compressedData)
-		if _, err := gzWriter.Write(jsonData); err != nil {
-			gzWriter.Close()
-			return fmt.Errorf("failed to compress data: %w", err)
-		}
-		if err := gzWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close gzip writer: %w", err)
-		}
-
 		url := fmt.Sprintf("%s/update", c.baseURL)
 
-		req, err := http.NewRequest("POST", url, &compressedData)
+		req, err := http.NewRequest("POST", url, bytes.NewReader(compressedData.Bytes()))
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
@@ -190,27 +191,27 @@ func (c *MetricHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
 		return nil // не отправлять пустые батчи
 	}
 
+	// Создаем JSON тело запроса
+	jsonData, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics to JSON: %w", err)
+	}
+
+	// Сжимаем данные с помощью gzip
+	var compressedData bytes.Buffer
+	gzWriter := gzip.NewWriter(&compressedData)
+	if _, err := gzWriter.Write(jsonData); err != nil {
+		gzWriter.Close()
+		return fmt.Errorf("failed to compress data: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
 	return retrySend(func() error {
-		// Создаем JSON тело запроса
-		jsonData, err := json.Marshal(metrics)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metrics to JSON: %w", err)
-		}
-
-		// Сжимаем данные с помощью gzip
-		var compressedData bytes.Buffer
-		gzWriter := gzip.NewWriter(&compressedData)
-		if _, err := gzWriter.Write(jsonData); err != nil {
-			gzWriter.Close()
-			return fmt.Errorf("failed to compress data: %w", err)
-		}
-		if err := gzWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close gzip writer: %w", err)
-		}
-
 		url := fmt.Sprintf("%s/updates", c.baseURL)
 
-		req, err := http.NewRequest("POST", url, &compressedData)
+		req, err := http.NewRequest("POST", url, bytes.NewReader(compressedData.Bytes()))
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
