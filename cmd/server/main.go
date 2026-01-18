@@ -127,6 +127,7 @@ func main() {
 	filePath := flag.String("f", "/tmp/metrics-db.json", "file storage path")
 	restore := flag.Bool("r", true, "restore metrics from file on startup")
 	dsn := flag.String("d", "", "database DSN")
+	keyFile := flag.String("k", "", "path to file containing hash key")
 	flag.Parse()
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
@@ -135,6 +136,19 @@ func main() {
 	storagePath := getEnv("FILE_STORAGE_PATH", *filePath)
 	shouldRestore := getEnvBool("RESTORE", *restore)
 	databaseDSN := getEnv("DATABASE_DSN", *dsn)
+	keyFileEnv := getEnv("KEY", *keyFile)
+
+	// Читаем ключ из файла, если указан
+	var hashKey string
+	if keyFileEnv != "" {
+		keyBytes, err := os.ReadFile(keyFileEnv)
+		if err != nil {
+			// Если файл не найден, используем значение как ключ напрямую
+			hashKey = keyFileEnv
+		} else {
+			hashKey = string(keyBytes)
+		}
+	}
 
 	// Инициализация БД, если DSN указан
 	if databaseDSN != "" {
@@ -215,11 +229,11 @@ func main() {
 	// Создаем хендлеры
 	updateHandler := handlers.NewUpdateHandler(finalStorage)
 	valueHandler := handlers.NewValueHandler(finalStorage)
-	updateJSONHandler := handlers.NewUpdateJSONHandler(finalStorage)
-	valueJSONHandler := handlers.NewValueJSONHandler(finalStorage)
+	updateJSONHandler := handlers.NewUpdateJSONHandler(finalStorage, hashKey)
+	valueJSONHandler := handlers.NewValueJSONHandler(finalStorage, hashKey)
 	indexHandler := handlers.NewIndexHandler(finalStorage)
 	pingHandler := handlers.NewPingHandler(db)
-	updatesHandler := handlers.NewUpdatesHandler(finalStorage)
+	updatesHandler := handlers.NewUpdatesHandler(finalStorage, hashKey)
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()

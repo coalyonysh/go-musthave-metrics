@@ -24,7 +24,7 @@ func TestMetricHTTPClient_SendMetric_Gauge(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewMetricHTTPClient(server.URL)
+	client := NewMetricHTTPClient(server.URL, "")
 
 	value := 123.45
 	metric := models.Metric{
@@ -55,7 +55,7 @@ func TestMetricHTTPClient_SendMetric_Counter(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewMetricHTTPClient(server.URL)
+	client := NewMetricHTTPClient(server.URL, "")
 
 	delta := int64(42)
 	metric := models.Metric{
@@ -71,7 +71,7 @@ func TestMetricHTTPClient_SendMetric_Counter(t *testing.T) {
 }
 
 func TestMetricHTTPClient_SendMetric_InvalidMetric(t *testing.T) {
-	client := NewMetricHTTPClient("http://localhost:8080")
+	client := NewMetricHTTPClient("http://localhost:8080", "")
 
 	// Тест с gauge без значения
 	metric := models.Metric{
@@ -105,7 +105,7 @@ func TestMetricHTTPClient_SendMetric_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewMetricHTTPClient(server.URL)
+	client := NewMetricHTTPClient(server.URL, "")
 
 	value := 123.45
 	metric := models.Metric{

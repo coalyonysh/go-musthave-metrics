@@ -8,15 +8,18 @@ import (
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
+	"github.com/coalyonysh/go-musthave-metrics/pkg/signature"
 )
 
 type ValueJSONHandler struct {
 	storage storage.Storage
+	key     string
 }
 
-func NewValueJSONHandler(storage storage.Storage) *ValueJSONHandler {
+func NewValueJSONHandler(storage storage.Storage, key string) *ValueJSONHandler {
 	return &ValueJSONHandler{
 		storage: storage,
+		key:     key,
 	}
 }
 
@@ -79,14 +82,26 @@ func (h *ValueJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Сериализуем ответ
+	responseBytes, err := json.Marshal(responseMetric)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to marshal response: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Вычисляем хеш ответа, если ключ задан
+	if h.key != "" {
+		hash := signature.CalculateHash(responseBytes, h.key)
+		w.Header().Set("HashSHA256", hash)
+	}
+
 	// Устанавливаем заголовок Content-Type
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	// Возвращаем метрику в JSON формате
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(responseMetric); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
+	if _, err := w.Write(responseBytes); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to write response: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

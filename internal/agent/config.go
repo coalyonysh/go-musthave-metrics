@@ -10,6 +10,7 @@ type Config struct {
 	ServerURL      string
 	PollInterval   time.Duration
 	ReportInterval time.Duration
+	Key            string
 }
 
 func (c *Config) Validate() error {
