@@ -11,6 +11,7 @@ import (
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
+	"github.com/coalyonysh/go-musthave-metrics/internal/service"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -128,6 +129,8 @@ func main() {
 	restore := flag.Bool("r", true, "restore metrics from file on startup")
 	dsn := flag.String("d", "", "database DSN")
 	keyFile := flag.String("k", "", "path to file containing hash key")
+	auditFile := flag.String("audit-file", "", "path to audit log file")
+	auditURL := flag.String("audit-url", "", "URL to send audit logs")
 	flag.Parse()
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
@@ -137,6 +140,8 @@ func main() {
 	shouldRestore := getEnvBool("RESTORE", *restore)
 	databaseDSN := getEnv("DATABASE_DSN", *dsn)
 	keyFileEnv := getEnv("KEY", *keyFile)
+	auditFilePath := getEnv("AUDIT_FILE", *auditFile)
+	auditURLPath := getEnv("AUDIT_URL", *auditURL)
 
 	// Читаем ключ из файла, если указан
 	var hashKey string
@@ -148,6 +153,19 @@ func main() {
 		} else {
 			hashKey = string(keyBytes)
 		}
+	}
+
+	// Создаем сервис аудита
+	auditService := service.NewAuditService()
+	if auditFilePath != "" {
+		fileObserver := service.NewFileObserver(auditFilePath)
+		auditService.AddObserver(fileObserver)
+		sugar.Infow("Audit file observer added", "path", auditFilePath)
+	}
+	if auditURLPath != "" {
+		urlObserver := service.NewURLOobserver(auditURLPath)
+		auditService.AddObserver(urlObserver)
+		sugar.Infow("Audit URL observer added", "url", auditURLPath)
 	}
 
 	// Инициализация БД, если DSN указан
@@ -227,13 +245,13 @@ func main() {
 	}
 
 	// Создаем хендлеры
-	updateHandler := handlers.NewUpdateHandler(finalStorage)
+	updateHandler := handlers.NewUpdateHandler(finalStorage, auditService)
 	valueHandler := handlers.NewValueHandler(finalStorage)
-	updateJSONHandler := handlers.NewUpdateJSONHandler(finalStorage, hashKey)
+	updateJSONHandler := handlers.NewUpdateJSONHandler(finalStorage, hashKey, auditService)
 	valueJSONHandler := handlers.NewValueJSONHandler(finalStorage, hashKey)
 	indexHandler := handlers.NewIndexHandler(finalStorage)
 	pingHandler := handlers.NewPingHandler(db)
-	updatesHandler := handlers.NewUpdatesHandler(finalStorage, hashKey)
+	updatesHandler := handlers.NewUpdatesHandler(finalStorage, hashKey, auditService)
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
