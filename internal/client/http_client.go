@@ -155,12 +155,6 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 			req.Header.Set("HashSHA256", hash)
 		}
 
-		// Добавляем хеш, если ключ задан
-		if c.key != "" {
-			hash := signature.CalculateHash(jsonData, c.key)
-			req.Header.Set("HashSHA256", hash)
-		}
-
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send request: %w", err)
@@ -234,6 +228,12 @@ func (c *MetricHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
+
+		// Добавляем хеш, если ключ задан
+		if c.key != "" {
+			hash := signature.CalculateHash(jsonData, c.key)
+			req.Header.Set("HashSHA256", hash)
+		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

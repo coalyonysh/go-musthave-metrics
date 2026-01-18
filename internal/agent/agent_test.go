@@ -32,7 +32,7 @@ func TestAgent_NewAgent(t *testing.T) {
 	pollInterval := 2 * time.Second
 	reportInterval := 10 * time.Second
 
-	agent := NewAgent(serverURL, pollInterval, reportInterval)
+	agent := NewAgent(serverURL, pollInterval, reportInterval, "")
 
 	if agent == nil {
 		t.Fatal("Expected agent to be created, got nil")
