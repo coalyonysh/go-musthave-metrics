@@ -2,9 +2,13 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/lib/pq"
 )
 
 type DBStorage struct {
@@ -78,8 +82,44 @@ func (s *DBStorage) GetAllGauges() map[string]float64 {
 	return result
 }
 
-// SetMetricsBatch устанавливает батч метрик в транзакции
+// isRetriableDBError проверяет, является ли ошибка БД retriable
+func isRetriableDBError(err error) bool {
+	// Сетевые ошибки
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	// PostgreSQL connection errors
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		// Class 08 — Connection Exception (08XXX)
+		if len(pqErr.Code) >= 2 && pqErr.Code[:2] == "08" {
+			return true
+		}
+	}
+	return false
+}
+
+// SetMetricsBatch устанавливает батч метрик в транзакции с повторными попытками
 func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
+	delays := []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+	for i, delay := range delays {
+		err := s.setMetricsBatchOnce(metrics)
+		if err == nil {
+			return nil
+		}
+		if !isRetriableDBError(err) {
+			return err
+		}
+		fmt.Printf("DB attempt %d failed, retrying in %v: %v\n", i+1, delay, err)
+		time.Sleep(delay)
+	}
+	// Последняя попытка
+	return s.setMetricsBatchOnce(metrics)
+}
+
+// setMetricsBatchOnce выполняет установку батча метрик без retry
+func (s *DBStorage) setMetricsBatchOnce(metrics []models.Metric) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -113,7 +153,11 @@ func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 		}
 	}
 
-	return tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *DBStorage) GetAllCounters() map[string]int64 {

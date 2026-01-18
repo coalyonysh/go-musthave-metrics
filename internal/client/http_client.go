@@ -3,11 +3,15 @@ package client
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
@@ -29,6 +33,43 @@ func NewMetricHTTPClient(baseURL string) *MetricHTTPClient {
 			Timeout: 10 * time.Second,
 		},
 	}
+}
+
+// isRetriableError проверяет, является ли ошибка retriable
+func isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Сетевые ошибки
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	// Таймауты
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	// HTTP ошибки, связанные с соединением
+	var httpErr *url.Error
+	return errors.As(err, &httpErr)
+}
+
+// retrySend выполняет функцию с повторными попытками
+func retrySend(fn func() error) error {
+	delays := []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+	for i, delay := range delays {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		if !isRetriableError(err) {
+			return err
+		}
+		log.Printf("Attempt %d failed, retrying in %v: %v", i+1, delay, err)
+		time.Sleep(delay)
+	}
+	// Последняя попытка
+	return fn()
 }
 
 func (c *MetricHTTPClient) SendMetric(metric models.Metric) error {
@@ -93,53 +134,55 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 		return fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/update", c.baseURL)
+	return retrySend(func() error {
+		url := fmt.Sprintf("%s/update", c.baseURL)
 
-	req, err := http.NewRequest("POST", url, &compressedData)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Accept-Encoding", "gzip")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Распаковываем ответ, если он сжат
-	var responseBody io.Reader = resp.Body
-	if resp.Header.Get("Content-Encoding") == "gzip" {
-		gzReader, err := gzip.NewReader(resp.Body)
+		req, err := http.NewRequest("POST", url, bytes.NewReader(compressedData.Bytes()))
 		if err != nil {
-			return fmt.Errorf("failed to create gzip reader: %w", err)
+			return fmt.Errorf("failed to create request: %w", err)
 		}
-		defer gzReader.Close()
-		responseBody = gzReader
-	}
 
-	// Читаем ответ (для проверки, что все в порядке)
-	bodyBytes, err := io.ReadAll(responseBody)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned non-200 status: %d, body: %s", resp.StatusCode, string(bodyBytes))
-	}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to send request: %w", err)
+		}
+		defer resp.Body.Close()
 
-	var valueStr string
-	if metric.MType == models.Counter && metric.Delta != nil {
-		valueStr = fmt.Sprintf("%d", *metric.Delta)
-	} else if metric.MType == models.Gauge && metric.Value != nil {
-		valueStr = fmt.Sprintf("%g", *metric.Value)
-	}
+		// Распаковываем ответ, если он сжат
+		var responseBody io.Reader = resp.Body
+		if resp.Header.Get("Content-Encoding") == "gzip" {
+			gzReader, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to create gzip reader: %w", err)
+			}
+			defer gzReader.Close()
+			responseBody = gzReader
+		}
 
-	log.Printf("Successfully sent metric: %s/%s/%s", metric.MType, metric.ID, valueStr)
-	return nil
+		// Читаем ответ (для проверки, что все в порядке)
+		bodyBytes, err := io.ReadAll(responseBody)
+		if err != nil {
+			return fmt.Errorf("failed to read response: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("server returned non-200 status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+		}
+
+		var valueStr string
+		if metric.MType == models.Counter && metric.Delta != nil {
+			valueStr = fmt.Sprintf("%d", *metric.Delta)
+		} else if metric.MType == models.Gauge && metric.Value != nil {
+			valueStr = fmt.Sprintf("%g", *metric.Value)
+		}
+
+		log.Printf("Successfully sent metric: %s/%s/%s", metric.MType, metric.ID, valueStr)
+		return nil
+	})
 }
 
 // SendMetricsBatch отправляет батч метрик в JSON формате через POST /updates с gzip сжатием
@@ -165,27 +208,29 @@ func (c *MetricHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
 		return fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/updates", c.baseURL)
+	return retrySend(func() error {
+		url := fmt.Sprintf("%s/updates", c.baseURL)
 
-	req, err := http.NewRequest("POST", url, &compressedData)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
+		req, err := http.NewRequest("POST", url, bytes.NewReader(compressedData.Bytes()))
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Accept-Encoding", "gzip")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to send request: %w", err)
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned non-200 status: %d", resp.StatusCode)
-	}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("server returned non-200 status: %d", resp.StatusCode)
+		}
 
-	log.Printf("Successfully sent %d metrics batch to server", len(metrics))
-	return nil
+		log.Printf("Successfully sent %d metrics batch to server", len(metrics))
+		return nil
+	})
 }
