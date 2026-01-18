@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 	"github.com/lib/pq"
@@ -82,6 +84,12 @@ func (s *DBStorage) GetAllGauges() map[string]float64 {
 
 // isRetriableDBError проверяет, является ли ошибка БД retriable
 func isRetriableDBError(err error) bool {
+	// Сетевые ошибки
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	// PostgreSQL connection errors
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
 		// Class 08 — Connection Exception (08XXX)
@@ -92,13 +100,28 @@ func isRetriableDBError(err error) bool {
 	return false
 }
 
-// SetMetricsBatch устанавливает батч метрик в транзакции
+// SetMetricsBatch устанавливает батч метрик в транзакции с повторными попытками
 func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
+	delays := []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+	for i, delay := range delays {
+		err := s.setMetricsBatchOnce(metrics)
+		if err == nil {
+			return nil
+		}
+		if !isRetriableDBError(err) {
+			return err
+		}
+		fmt.Printf("DB attempt %d failed, retrying in %v: %v\n", i+1, delay, err)
+		time.Sleep(delay)
+	}
+	// Последняя попытка
+	return s.setMetricsBatchOnce(metrics)
+}
+
+// setMetricsBatchOnce выполняет установку батча метрик без retry
+func (s *DBStorage) setMetricsBatchOnce(metrics []models.Metric) error {
 	tx, err := s.db.Begin()
 	if err != nil {
-		if isRetriableDBError(err) {
-			return fmt.Errorf("retriable error: %w", err)
-		}
 		return err
 	}
 	defer tx.Rollback()
@@ -113,9 +136,6 @@ func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 					ON CONFLICT (name, type) DO UPDATE SET value = EXCLUDED.value`,
 					metric.ID, "gauge", *metric.Value)
 				if err != nil {
-					if isRetriableDBError(err) {
-						return fmt.Errorf("retriable error: %w", err)
-					}
 					return err
 				}
 			}
@@ -127,9 +147,6 @@ func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 					ON CONFLICT (name, type) DO UPDATE SET delta = metrics.delta + EXCLUDED.delta`,
 					metric.ID, "counter", *metric.Delta)
 				if err != nil {
-					if isRetriableDBError(err) {
-						return fmt.Errorf("retriable error: %w", err)
-					}
 					return err
 				}
 			}
@@ -138,9 +155,6 @@ func (s *DBStorage) SetMetricsBatch(metrics []models.Metric) error {
 
 	err = tx.Commit()
 	if err != nil {
-		if isRetriableDBError(err) {
-			return fmt.Errorf("retriable error: %w", err)
-		}
 		return err
 	}
 	return nil
