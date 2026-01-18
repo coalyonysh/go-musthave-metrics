@@ -99,6 +99,8 @@ func (as *AuditService) Log(metrics []string, ipAddress string) {
 
 	for _, observer := range as.observers {
 		if err := observer.Notify(event); err != nil {
+			// ignore audit errors to not affect main logic
+			_ = err
 		}
 	}
 }
