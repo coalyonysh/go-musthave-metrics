@@ -143,9 +143,11 @@ func main() {
 	if keyFileEnv != "" {
 		keyBytes, err := os.ReadFile(keyFileEnv)
 		if err != nil {
-			sugar.Fatalf("Failed to read key file: %v", err)
+			// Если файл не найден, используем значение как ключ напрямую
+			hashKey = keyFileEnv
+		} else {
+			hashKey = string(keyBytes)
 		}
-		hashKey = string(keyBytes)
 	}
 
 	// Инициализация БД, если DSN указан

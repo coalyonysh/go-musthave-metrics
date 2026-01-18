@@ -50,9 +50,11 @@ func main() {
 	if *keyFileFlag != "" {
 		keyBytes, err := os.ReadFile(*keyFileFlag)
 		if err != nil {
-			log.Fatalf("Failed to read key file: %v", err)
+			// Если файл не найден, используем значение флага как ключ напрямую
+			key = *keyFileFlag
+		} else {
+			key = string(keyBytes)
 		}
-		key = string(keyBytes)
 	}
 
 	config := &agent.Config{
