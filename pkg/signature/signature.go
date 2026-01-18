@@ -18,8 +18,8 @@ func CalculateHash(data []byte, key string) string {
 
 // VerifyHash проверяет, соответствует ли предоставленный hash вычисленному от data с key
 func VerifyHash(data []byte, key, providedHash string) bool {
-	if key == "" {
-		return true // если ключ не задан, пропускаем проверку
+	if key == "" || providedHash == "" {
+		return true // если ключ не задан или хеш не предоставлен, пропускаем проверку
 	}
 	computed := CalculateHash(data, key)
 	return hmac.Equal([]byte(computed), []byte(providedHash))
