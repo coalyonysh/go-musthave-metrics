@@ -36,20 +36,30 @@ func main() {
 	defaultAddr := getEnv("ADDRESS", "localhost:8080")
 	defaultReportSec := getEnvInt("REPORT_INTERVAL", 10)
 	defaultPollSec := getEnvInt("POLL_INTERVAL", 2)
-	defaultKey := getEnv("KEY", "")
+	defaultKeyFile := getEnv("KEY", "")
 
 	// Флаги (приоритет у переменных окружения)
 	addrFlag := flag.String("a", defaultAddr, "server address")
 	reportSec := flag.Int("r", defaultReportSec, "report interval in seconds")
 	pollSec := flag.Int("p", defaultPollSec, "poll interval in seconds")
-	keyFlag := flag.String("k", defaultKey, "hash key")
+	keyFileFlag := flag.String("k", defaultKeyFile, "path to file containing hash key")
 	flag.Parse()
+
+	// Читаем ключ из файла, если указан
+	var key string
+	if *keyFileFlag != "" {
+		keyBytes, err := os.ReadFile(*keyFileFlag)
+		if err != nil {
+			log.Fatalf("Failed to read key file: %v", err)
+		}
+		key = string(keyBytes)
+	}
 
 	config := &agent.Config{
 		ServerURL:      *addrFlag,
 		PollInterval:   time.Duration(*pollSec) * time.Second,
 		ReportInterval: time.Duration(*reportSec) * time.Second,
-		Key:            *keyFlag,
+		Key:            key,
 	}
 
 	if err := config.Validate(); err != nil {
