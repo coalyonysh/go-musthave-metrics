@@ -37,12 +37,14 @@ func main() {
 	defaultReportSec := getEnvInt("REPORT_INTERVAL", 10)
 	defaultPollSec := getEnvInt("POLL_INTERVAL", 2)
 	defaultKeyFile := getEnv("KEY", "")
+	defaultRateLimit := getEnvInt("RATE_LIMIT", 10)
 
 	// Флаги (приоритет у переменных окружения)
 	addrFlag := flag.String("a", defaultAddr, "server address")
 	reportSec := flag.Int("r", defaultReportSec, "report interval in seconds")
 	pollSec := flag.Int("p", defaultPollSec, "poll interval in seconds")
 	keyFileFlag := flag.String("k", defaultKeyFile, "path to file containing hash key")
+	rateLimitFlag := flag.Int("l", defaultRateLimit, "rate limit for concurrent requests")
 	flag.Parse()
 
 	// Читаем ключ из файла, если указан
@@ -62,16 +64,17 @@ func main() {
 		PollInterval:   time.Duration(*pollSec) * time.Second,
 		ReportInterval: time.Duration(*reportSec) * time.Second,
 		Key:            key,
+		RateLimit:      *rateLimitFlag,
 	}
 
 	if err := config.Validate(); err != nil {
 		log.Fatalf("Invalid config: %v", err)
 	}
 
-	log.Printf("Config: Server=%s, PollInterval=%v, ReportInterval=%v, Key=%s",
-		config.ServerURL, config.PollInterval, config.ReportInterval, config.Key)
+	log.Printf("Config: Server=%s, PollInterval=%v, ReportInterval=%v, Key=%s, RateLimit=%d",
+		config.ServerURL, config.PollInterval, config.ReportInterval, config.Key, config.RateLimit)
 
-	agent := agent.NewAgent(config.ServerURL, config.PollInterval, config.ReportInterval, config.Key)
+	agent := agent.NewAgent(*config)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

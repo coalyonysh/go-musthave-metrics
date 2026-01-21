@@ -1,10 +1,14 @@
 package agent
 
 import (
+	"log"
 	"math/rand"
 	"runtime"
+	"strconv"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 type MetricsCollector struct {
@@ -53,6 +57,43 @@ func (mc *MetricsCollector) CollectMetrics() []models.Metric {
 		{ID: "TotalAlloc", MType: models.Gauge, Value: float64Ptr(float64(stats.TotalAlloc))},
 		{ID: "PollCount", MType: models.Counter, Delta: int64Ptr(1)},
 		{ID: "RandomValue", MType: models.Gauge, Value: float64Ptr(mc.randomValue)},
+	}
+
+	return metrics
+}
+
+func (mc *MetricsCollector) CollectGopsutilMetrics() []models.Metric {
+	var metrics []models.Metric
+
+	// TotalMemory
+	vmStat, err := mem.VirtualMemory()
+	if err != nil {
+		log.Printf("Failed to get virtual memory: %v", err)
+	} else {
+		metrics = append(metrics, models.Metric{
+			ID:    "TotalMemory",
+			MType: models.Gauge,
+			Value: float64Ptr(float64(vmStat.Total)),
+		})
+		metrics = append(metrics, models.Metric{
+			ID:    "FreeMemory",
+			MType: models.Gauge,
+			Value: float64Ptr(float64(vmStat.Available)), // Available is free + buffers/cache
+		})
+	}
+
+	// CPUutilization
+	percents, err := cpu.Percent(0, true)
+	if err != nil {
+		log.Printf("Failed to get CPU percent: %v", err)
+	} else {
+		for i, percent := range percents {
+			metrics = append(metrics, models.Metric{
+				ID:    "CPUutilization" + strconv.Itoa(i+1),
+				MType: models.Gauge,
+				Value: float64Ptr(percent),
+			})
+		}
 	}
 
 	return metrics

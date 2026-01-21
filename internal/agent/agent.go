@@ -14,55 +14,99 @@ type Agent struct {
 	client         client.MetricSender
 	pollInterval   time.Duration
 	reportInterval time.Duration
+	rateLimit      int
 	done           chan struct{}
 	stopOnce       sync.Once
+	wg             sync.WaitGroup
 	metricsMutex   sync.RWMutex
 	metrics        []models.Metric
+	metricsChan    chan []models.Metric
 }
 
-func NewAgent(serverURL string, pollInterval, reportInterval time.Duration, key string) *Agent {
+func NewAgent(config Config) *Agent {
 	return &Agent{
 		collector:      NewMetricsCollector(),
-		client:         client.NewMetricHTTPClient(serverURL, key),
-		pollInterval:   pollInterval,
-		reportInterval: reportInterval,
+		client:         client.NewMetricHTTPClient(config.ServerURL, config.Key),
+		pollInterval:   config.PollInterval,
+		reportInterval: config.ReportInterval,
+		rateLimit:      config.RateLimit,
 		done:           make(chan struct{}),
+		wg:             sync.WaitGroup{},
 		metricsMutex:   sync.RWMutex{},
 		metrics:        nil,
+		metricsChan:    make(chan []models.Metric, config.RateLimit*2), // буфер для избежания блокировки
 	}
 }
 
 func (a *Agent) Start() {
 	log.Printf("Starting metrics agent")
-	log.Printf("Poll interval: %v, Report interval: %v", a.pollInterval, a.reportInterval)
+	log.Printf("Poll interval: %v, Report interval: %v, Rate limit: %d", a.pollInterval, a.reportInterval, a.rateLimit)
 
-	pollTicker := time.NewTicker(a.pollInterval)
+	// Start worker pool
+	a.startWorkerPool()
+
+	// Start poll goroutine
+	a.wg.Add(1)
+	go a.pollMetrics()
+
+	// Start report ticker
 	reportTicker := time.NewTicker(a.reportInterval)
+	defer reportTicker.Stop()
+
+	for {
+		select {
+		case <-reportTicker.C:
+			metrics := a.getMetrics()
+			if metrics != nil {
+				a.metricsChan <- metrics
+				log.Printf("Sent %d metrics to worker pool", len(metrics))
+			}
+
+		case <-a.done:
+			return
+		}
+	}
+}
+
+func (a *Agent) pollMetrics() {
+	defer a.wg.Done()
+	pollTicker := time.NewTicker(a.pollInterval)
+	defer pollTicker.Stop()
 
 	for {
 		select {
 		case <-pollTicker.C:
-			metrics := a.collector.CollectMetrics()
-			a.setMetrics(metrics)
-			log.Printf("Collected %d metrics", len(metrics))
-
-		case <-reportTicker.C:
-			metrics := a.getMetrics()
-			if metrics != nil {
-				a.sendMetrics(metrics)
-			}
+			runtimeMetrics := a.collector.CollectMetrics()
+			gopsutilMetrics := a.collector.CollectGopsutilMetrics()
+			allMetrics := append(runtimeMetrics, gopsutilMetrics...)
+			a.setMetrics(allMetrics)
+			log.Printf("Collected %d metrics", len(allMetrics))
 
 		case <-a.done:
-			pollTicker.Stop()
-			reportTicker.Stop()
 			return
 		}
+	}
+}
+
+func (a *Agent) startWorkerPool() {
+	a.wg.Add(a.rateLimit)
+	for i := 0; i < a.rateLimit; i++ {
+		go func(workerID int) {
+			defer a.wg.Done()
+			log.Printf("Starting worker %d", workerID)
+			for metrics := range a.metricsChan {
+				a.sendMetrics(metrics)
+			}
+			log.Printf("Stopping worker %d", workerID)
+		}(i)
 	}
 }
 
 func (a *Agent) Stop() {
 	a.stopOnce.Do(func() {
 		close(a.done)
+		close(a.metricsChan)
+		a.wg.Wait()
 	})
 }
 
