@@ -10,19 +10,22 @@ import (
 	"strings"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/coalyonysh/go-musthave-metrics/internal/service"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/coalyonysh/go-musthave-metrics/pkg/signature"
 )
 
 type UpdateJSONHandler struct {
-	storage storage.Storage
-	key     string
+	storage      storage.Storage
+	key          string
+	auditService *service.AuditService
 }
 
-func NewUpdateJSONHandler(storage storage.Storage, key string) *UpdateJSONHandler {
+func NewUpdateJSONHandler(storage storage.Storage, key string, auditService *service.AuditService) *UpdateJSONHandler {
 	return &UpdateJSONHandler{
-		storage: storage,
-		key:     key,
+		storage:      storage,
+		key:          key,
+		auditService: auditService,
 	}
 }
 
@@ -107,6 +110,10 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Invalid metric type: %s", metric.MType), http.StatusBadRequest)
 		return
 	}
+
+	// Аудит после успешной обработки
+	ip := getClientIP(r)
+	h.auditService.Log([]string{metric.ID}, ip)
 
 	// Сериализуем ответ
 	responseBytes, err := json.Marshal(responseMetric)

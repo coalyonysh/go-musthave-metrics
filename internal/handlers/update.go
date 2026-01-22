@@ -7,17 +7,20 @@ import (
 	"strconv"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/coalyonysh/go-musthave-metrics/internal/service"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/gorilla/mux"
 )
 
 type UpdateHandler struct {
-	storage storage.Storage
+	storage      storage.Storage
+	auditService *service.AuditService
 }
 
-func NewUpdateHandler(storage storage.Storage) *UpdateHandler {
+func NewUpdateHandler(storage storage.Storage, auditService *service.AuditService) *UpdateHandler {
 	return &UpdateHandler{
-		storage: storage,
+		storage:      storage,
+		auditService: auditService,
 	}
 }
 
@@ -53,6 +56,10 @@ func (h *UpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid metric type", http.StatusBadRequest)
 		return
 	}
+
+	// Аудит после успешной обработки
+	ip := getClientIP(r)
+	h.auditService.Log([]string{metricName}, ip)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))

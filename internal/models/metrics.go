@@ -17,3 +17,10 @@ type Metric struct {
 	Value *float64 `json:"value,omitempty"`
 	Hash  string   `json:"hash,omitempty"`
 }
+
+// AuditEvent представляет событие аудита
+type AuditEvent struct {
+	Timestamp int64    `json:"ts"`
+	Metrics   []string `json:"metrics"`
+	IPAddress string   `json:"ip_address"`
+}

@@ -9,19 +9,22 @@ import (
 	"strings"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/coalyonysh/go-musthave-metrics/internal/service"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/coalyonysh/go-musthave-metrics/pkg/signature"
 )
 
 type UpdatesHandler struct {
-	storage storage.Storage
-	key     string
+	storage      storage.Storage
+	key          string
+	auditService *service.AuditService
 }
 
-func NewUpdatesHandler(storage storage.Storage, key string) *UpdatesHandler {
+func NewUpdatesHandler(storage storage.Storage, key string, auditService *service.AuditService) *UpdatesHandler {
 	return &UpdatesHandler{
-		storage: storage,
-		key:     key,
+		storage:      storage,
+		key:          key,
+		auditService: auditService,
 	}
 }
 
@@ -94,6 +97,14 @@ func (h *UpdatesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Processed %d metrics batch", len(metrics))
+
+	// Аудит после успешной обработки
+	metricNames := make([]string, len(metrics))
+	for i, metric := range metrics {
+		metricNames[i] = metric.ID
+	}
+	ip := getClientIP(r)
+	h.auditService.Log(metricNames, ip)
 
 	w.WriteHeader(http.StatusOK)
 }
