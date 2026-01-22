@@ -74,7 +74,7 @@ func main() {
 	log.Printf("Config: Server=%s, PollInterval=%v, ReportInterval=%v, Key=%s, RateLimit=%d",
 		config.ServerURL, config.PollInterval, config.ReportInterval, config.Key, config.RateLimit)
 
-	agent := agent.NewAgent(config.ServerURL, config.PollInterval, config.ReportInterval, config.Key, config.RateLimit)
+	agent := agent.NewAgent(*config)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

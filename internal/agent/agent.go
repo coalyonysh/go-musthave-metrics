@@ -17,22 +17,24 @@ type Agent struct {
 	rateLimit      int
 	done           chan struct{}
 	stopOnce       sync.Once
+	wg             sync.WaitGroup
 	metricsMutex   sync.RWMutex
 	metrics        []models.Metric
 	metricsChan    chan []models.Metric
 }
 
-func NewAgent(serverURL string, pollInterval, reportInterval time.Duration, key string, rateLimit int) *Agent {
+func NewAgent(config Config) *Agent {
 	return &Agent{
 		collector:      NewMetricsCollector(),
-		client:         client.NewMetricHTTPClient(serverURL, key),
-		pollInterval:   pollInterval,
-		reportInterval: reportInterval,
-		rateLimit:      rateLimit,
+		client:         client.NewMetricHTTPClient(config.ServerURL, config.Key),
+		pollInterval:   config.PollInterval,
+		reportInterval: config.ReportInterval,
+		rateLimit:      config.RateLimit,
 		done:           make(chan struct{}),
+		wg:             sync.WaitGroup{},
 		metricsMutex:   sync.RWMutex{},
 		metrics:        nil,
-		metricsChan:    make(chan []models.Metric, rateLimit*2), // буфер для избежания блокировки
+		metricsChan:    make(chan []models.Metric, config.RateLimit*2), // буфер для избежания блокировки
 	}
 }
 
@@ -44,6 +46,7 @@ func (a *Agent) Start() {
 	a.startWorkerPool()
 
 	// Start poll goroutine
+	a.wg.Add(1)
 	go a.pollMetrics()
 
 	// Start report ticker
@@ -55,12 +58,8 @@ func (a *Agent) Start() {
 		case <-reportTicker.C:
 			metrics := a.getMetrics()
 			if metrics != nil {
-				select {
-				case a.metricsChan <- metrics:
-					log.Printf("Sent %d metrics to worker pool", len(metrics))
-				default:
-					log.Printf("Worker pool channel full, skipping send")
-				}
+				a.metricsChan <- metrics
+				log.Printf("Sent %d metrics to worker pool", len(metrics))
 			}
 
 		case <-a.done:
@@ -70,6 +69,7 @@ func (a *Agent) Start() {
 }
 
 func (a *Agent) pollMetrics() {
+	defer a.wg.Done()
 	pollTicker := time.NewTicker(a.pollInterval)
 	defer pollTicker.Stop()
 
@@ -89,8 +89,10 @@ func (a *Agent) pollMetrics() {
 }
 
 func (a *Agent) startWorkerPool() {
+	a.wg.Add(a.rateLimit)
 	for i := 0; i < a.rateLimit; i++ {
 		go func(workerID int) {
+			defer a.wg.Done()
 			log.Printf("Starting worker %d", workerID)
 			for metrics := range a.metricsChan {
 				a.sendMetrics(metrics)
@@ -104,6 +106,7 @@ func (a *Agent) Stop() {
 	a.stopOnce.Do(func() {
 		close(a.done)
 		close(a.metricsChan)
+		a.wg.Wait()
 	})
 }
 

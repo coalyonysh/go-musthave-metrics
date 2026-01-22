@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -28,27 +29,30 @@ func (e *mockError) Error() string {
 }
 
 func TestAgent_NewAgent(t *testing.T) {
-	serverURL := "http://localhost:8080"
-	pollInterval := 2 * time.Second
-	reportInterval := 10 * time.Second
-	rateLimit := 10
+	config := Config{
+		ServerURL:      "http://localhost:8080",
+		PollInterval:   2 * time.Second,
+		ReportInterval: 10 * time.Second,
+		Key:            "",
+		RateLimit:      10,
+	}
 
-	agent := NewAgent(serverURL, pollInterval, reportInterval, "", rateLimit)
+	agent := NewAgent(config)
 
 	if agent == nil {
 		t.Fatal("Expected agent to be created, got nil")
 	}
 
-	if agent.pollInterval != pollInterval {
-		t.Errorf("Expected pollInterval %v, got %v", pollInterval, agent.pollInterval)
+	if agent.pollInterval != config.PollInterval {
+		t.Errorf("Expected pollInterval %v, got %v", config.PollInterval, agent.pollInterval)
 	}
 
-	if agent.reportInterval != reportInterval {
-		t.Errorf("Expected reportInterval %v, got %v", reportInterval, agent.reportInterval)
+	if agent.reportInterval != config.ReportInterval {
+		t.Errorf("Expected reportInterval %v, got %v", config.ReportInterval, agent.reportInterval)
 	}
 
-	if agent.rateLimit != rateLimit {
-		t.Errorf("Expected rateLimit %d, got %d", rateLimit, agent.rateLimit)
+	if agent.rateLimit != config.RateLimit {
+		t.Errorf("Expected rateLimit %d, got %d", config.RateLimit, agent.rateLimit)
 	}
 
 	if agent.collector == nil {
@@ -118,6 +122,7 @@ func TestAgent_Stop(t *testing.T) {
 	agent := &Agent{
 		done:        make(chan struct{}, 1),
 		metricsChan: make(chan []models.Metric, 1),
+		wg:          sync.WaitGroup{},
 	}
 
 	// Тест не блокируется
