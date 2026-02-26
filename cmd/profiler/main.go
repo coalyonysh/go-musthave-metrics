@@ -82,17 +82,29 @@ func generateLoad() {
 
 		// Добавляем GET запросы для чтения
 		if i%5 == 0 {
-			client.Get(indexURL)
+			resp, err := client.Get(indexURL)
+			if err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
 		}
 
 		// Отправляем одиночные метрики
 		if i%3 == 0 {
-			http.Post(serverAddr+"/update/gauge/metric_"+fmt.Sprintf("%d", i%100)+"/1.5", "text/plain", nil)
+			resp, err := http.Post(serverAddr+"/update/gauge/metric_"+fmt.Sprintf("%d", i%100)+"/1.5", "text/plain", nil)
+			if err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
 		}
 
 		// Читаем значения
 		if i%10 == 0 {
-			client.Get(valueURL)
+			resp, err := client.Get(valueURL)
+			if err == nil {
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
 		}
 	}
 }
