@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"flag"
 	"net/http"
+	"net/http/pprof"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"sync"
@@ -255,6 +257,14 @@ func main() {
 
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
+
+	// Добавляем pprof маршруты через Subrouter
+	prouter := router.PathPrefix("/debug/pprof").Subrouter()
+	prouter.HandleFunc("/", pprof.Index)
+	prouter.HandleFunc("/cmdline", pprof.Cmdline)
+	prouter.HandleFunc("/profile", pprof.Profile)
+	prouter.HandleFunc("/symbol", pprof.Symbol)
+	prouter.HandleFunc("/trace", pprof.Trace)
 
 	// Добавляем middleware в правильном порядке:
 	// 1. Сначала распаковка запросов (GzipDecompress)

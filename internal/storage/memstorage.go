@@ -60,7 +60,8 @@ func (s *MemStorage) GetAllGauges() map[string]float64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	// Создаем копию карты для безопасного возврата
-	result := make(map[string]float64)
+	// Предварительно выделяем память для нужного количества элементов
+	result := make(map[string]float64, len(s.gauges))
 	for k, v := range s.gauges {
 		result[k] = v
 	}
@@ -89,7 +90,8 @@ func (s *MemStorage) GetAllCounters() map[string]int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	// Создаем копию карты для безопасного возврата
-	result := make(map[string]int64)
+	// Предварительно выделяем память для нужного количества элементов
+	result := make(map[string]int64, len(s.counters))
 	for k, v := range s.counters {
 		result[k] = v
 	}
