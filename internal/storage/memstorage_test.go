@@ -227,10 +227,13 @@ func TestNewMemStorage(t *testing.T) {
 	if s == nil {
 		t.Error("expected non-nil storage")
 	}
-	if s.gauges == nil {
-		t.Error("expected gauges map to be initialized")
+	// Check that maps are accessible
+	gauges := s.GetAllGauges()
+	if gauges == nil {
+		t.Error("expected gauges map to be non-nil")
 	}
-	if s.counters == nil {
-		t.Error("expected counters map to be initialized")
+	counters := s.GetAllCounters()
+	if counters == nil {
+		t.Error("expected counters map to be non-nil")
 	}
 }

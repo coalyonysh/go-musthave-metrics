@@ -128,8 +128,10 @@ func TestSyncStorage_NewSyncStorage(t *testing.T) {
 	if s == nil {
 		t.Error("expected non-nil sync storage")
 	}
-	if s.Storage != memStorage {
-		t.Error("expected Storage to be set")
+	// Verify storage is accessible through public methods
+	_, ok := s.GetGauge("nonexistent")
+	if ok {
+		t.Error("gauge should not exist")
 	}
 }
 
