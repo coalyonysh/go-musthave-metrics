@@ -24,7 +24,7 @@ const (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: profiler <output_file>")
-		os.Exit(1)
+		log.Fatalf("Usage: profiler <output_file>")
 	}
 	outputFile := os.Args[1]
 
