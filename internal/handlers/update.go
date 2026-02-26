@@ -12,11 +12,15 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// UpdateHandler обрабатывает запросы на обновление метрик через URL.
+// Пример запроса: POST /update/gauge/metric_name/123.45
 type UpdateHandler struct {
 	storage      storage.Storage
 	auditService *service.AuditService
 }
 
+// NewUpdateHandler создаёт новый обработчик обновления метрик.
+// Принимает storage для сохранения метрик и опциональный auditService для логирования.
 func NewUpdateHandler(storage storage.Storage, auditService *service.AuditService) *UpdateHandler {
 	return &UpdateHandler{
 		storage:      storage,
@@ -24,6 +28,8 @@ func NewUpdateHandler(storage storage.Storage, auditService *service.AuditServic
 	}
 }
 
+// ServeHTTP обрабатывает HTTP запрос на обновление метрики.
+// Ожидает POST запрос с параметрами type, name и value в пути URL.
 func (h *UpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

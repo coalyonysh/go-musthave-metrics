@@ -8,16 +8,20 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 )
 
+// IndexHandler обрабатывает запросы на получение HTML страницы со списком всех метрик.
+// Пример запроса: GET /
 type IndexHandler struct {
 	storage storage.Storage
 }
 
+// NewIndexHandler создаёт новый обработчик для отображения страницы метрик.
 func NewIndexHandler(storage storage.Storage) *IndexHandler {
 	return &IndexHandler{
 		storage: storage,
 	}
 }
 
+// ServeHTTP обрабатывает HTTP запрос и возвращает HTML страницу со всеми метриками.
 func (h *IndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

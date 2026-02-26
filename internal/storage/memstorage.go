@@ -6,6 +6,8 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
 )
 
+// Storage определяет интерфейс хранилища метрик.
+// Интерфейс позволяет хранить и извлекать метрики типа gauge и counter.
 type Storage interface {
 	SetGauge(name string, value float64)
 	SetCounter(name string, value int64)
@@ -16,12 +18,16 @@ type Storage interface {
 	SetMetricsBatch(metrics []models.Metric) error
 }
 
+// MemStorage представляет in-memory хранилище метрик.
+// Использует sync.RWMutex для безопасного доступа из горутин.
 type MemStorage struct {
 	mu       sync.RWMutex
 	gauges   map[string]float64
 	counters map[string]int64
 }
 
+// NewMemStorage создаёт новое in-memory хранилище.
+// Возвращает инициализированный MemStorage с пустыми картами для gauge и counter метрик.
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		gauges:   make(map[string]float64),
@@ -29,12 +35,16 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
+// SetGauge устанавливает значение gauge метрики.
+// Gauge метрика может принимать произвольное дробное значение.
 func (s *MemStorage) SetGauge(name string, value float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gauges[name] = value
 }
 
+// SetCounter устанавливает/увеличивает значение counter метрики.
+// Counter метрика аккумулирует значения (суммирует).
 func (s *MemStorage) SetCounter(name string, value int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -42,6 +52,8 @@ func (s *MemStorage) SetCounter(name string, value int64) {
 	s.counters[name] += value
 }
 
+// GetGauge возвращает значение gauge метрики по имени.
+// Возвращает значение и флаг существования.
 func (s *MemStorage) GetGauge(name string) (float64, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -49,6 +61,8 @@ func (s *MemStorage) GetGauge(name string) (float64, bool) {
 	return value, exists
 }
 
+// GetCounter возвращает значение counter метрики по имени.
+// Возвращает значение и флаг существования.
 func (s *MemStorage) GetCounter(name string) (int64, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -56,6 +70,8 @@ func (s *MemStorage) GetCounter(name string) (int64, bool) {
 	return value, exists
 }
 
+// GetAllGauges возвращает копию всех gauge метрик.
+// Возвращает новую карту для избежания race condition.
 func (s *MemStorage) GetAllGauges() map[string]float64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -68,6 +84,8 @@ func (s *MemStorage) GetAllGauges() map[string]float64 {
 	return result
 }
 
+// SetMetricsBatch устанавливает пакет метрик за один вызов.
+// Более эффективно чем установка по одной метрике.
 func (s *MemStorage) SetMetricsBatch(metrics []models.Metric) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,6 +104,8 @@ func (s *MemStorage) SetMetricsBatch(metrics []models.Metric) error {
 	return nil
 }
 
+// GetAllCounters возвращает копию всех counter метрик.
+// Возвращает новую карту для избежания race condition.
 func (s *MemStorage) GetAllCounters() map[string]int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
