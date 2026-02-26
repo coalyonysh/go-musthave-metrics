@@ -8,7 +8,7 @@ import (
 )
 
 // Пример работы с MemStorage - базовое использование
-func ExampleMemStorage_basic() {
+func ExampleMemStorage() {
 	// Создаём новое хранилище
 	s := NewMemStorage()
 
