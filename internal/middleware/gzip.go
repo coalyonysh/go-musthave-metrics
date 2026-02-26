@@ -113,4 +113,3 @@ func shouldCompress(contentType string) bool {
 	return strings.HasPrefix(contentType, "application/json") ||
 		strings.HasPrefix(contentType, "text/html")
 }
-

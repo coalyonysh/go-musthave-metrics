@@ -93,4 +93,3 @@ func LoadMetrics(s Storage, filePath string) error {
 
 	return nil
 }
-
