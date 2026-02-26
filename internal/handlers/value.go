@@ -9,16 +9,21 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// ValueHandler обрабатывает запросы на получение значения метрики.
+// Пример запроса: GET /value/gauge/metric_name
 type ValueHandler struct {
 	storage storage.Storage
 }
 
+// NewValueHandler создаёт новый обработчик получения значений метрик.
 func NewValueHandler(storage storage.Storage) *ValueHandler {
 	return &ValueHandler{
 		storage: storage,
 	}
 }
 
+// ServeHTTP обрабатывает HTTP запрос на получение значения метрики.
+// Ожидает GET запрос с параметрами type и name в пути URL.
 func (h *ValueHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
