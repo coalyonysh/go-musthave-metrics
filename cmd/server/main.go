@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"flag"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -21,6 +22,11 @@ import (
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
 )
+
+// Глобальные переменные для информации о сборке
+var buildVersion string
+var buildDate string
+var buildCommit string
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
 func getEnv(key, defaultValue string) string {
@@ -133,6 +139,20 @@ func main() {
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL to send audit logs")
 	flag.Parse()
+
+	// Вывод информации о сборке
+	if buildVersion == "" {
+		buildVersion = "N/A"
+	}
+	if buildDate == "" {
+		buildDate = "N/A"
+	}
+	if buildCommit == "" {
+		buildCommit = "N/A"
+	}
+	fmt.Printf("Build version: %s\n", buildVersion)
+	fmt.Printf("Build date: %s\n", buildDate)
+	fmt.Printf("Build commit: %s\n", buildCommit)
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
 	serverAddr := getEnv("ADDRESS", *addr)
