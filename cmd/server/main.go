@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"flag"
-	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coalyonysh/go-musthave-metrics/internal/buildinfo"
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/service"
@@ -24,9 +24,11 @@ import (
 )
 
 // Глобальные переменные для информации о сборке
-var buildVersion string
-var buildDate string
-var buildCommit string
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
 func getEnv(key, defaultValue string) string {
@@ -141,18 +143,7 @@ func main() {
 	flag.Parse()
 
 	// Вывод информации о сборке
-	if buildVersion == "" {
-		buildVersion = "N/A"
-	}
-	if buildDate == "" {
-		buildDate = "N/A"
-	}
-	if buildCommit == "" {
-		buildCommit = "N/A"
-	}
-	fmt.Printf("Build version: %s\n", buildVersion)
-	fmt.Printf("Build date: %s\n", buildDate)
-	fmt.Printf("Build commit: %s\n", buildCommit)
+	buildinfo.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
 	serverAddr := getEnv("ADDRESS", *addr)

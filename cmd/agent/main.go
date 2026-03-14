@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -11,12 +10,15 @@ import (
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/agent"
+	"github.com/coalyonysh/go-musthave-metrics/internal/buildinfo"
 )
 
 // Глобальные переменные для информации о сборке
-var buildVersion string
-var buildDate string
-var buildCommit string
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
 func getEnv(key, defaultValue string) string {
@@ -53,19 +55,7 @@ func main() {
 	rateLimitFlag := flag.Int("l", defaultRateLimit, "rate limit for concurrent requests")
 	flag.Parse()
 
-	// Вывод информации о сборке
-	if buildVersion == "" {
-		buildVersion = "N/A"
-	}
-	if buildDate == "" {
-		buildDate = "N/A"
-	}
-	if buildCommit == "" {
-		buildCommit = "N/A"
-	}
-	fmt.Printf("Build version: %s\n", buildVersion)
-	fmt.Printf("Build date: %s\n", buildDate)
-	fmt.Printf("Build commit: %s\n", buildCommit)
+	buildinfo.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
 	// Читаем ключ из файла, если указан
 	var key string
