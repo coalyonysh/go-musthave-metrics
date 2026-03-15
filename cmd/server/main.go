@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coalyonysh/go-musthave-metrics/internal/buildinfo"
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/service"
@@ -20,6 +21,13 @@ import (
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
+)
+
+// Глобальные переменные для информации о сборке
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
@@ -133,6 +141,9 @@ func main() {
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL to send audit logs")
 	flag.Parse()
+
+	// Вывод информации о сборке
+	buildinfo.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
 	serverAddr := getEnv("ADDRESS", *addr)

@@ -164,7 +164,8 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 		// Распаковываем ответ, если он сжат
 		var responseBody io.Reader = resp.Body
 		if resp.Header.Get("Content-Encoding") == "gzip" {
-			gzReader, err := gzip.NewReader(resp.Body)
+			var gzReader *gzip.Reader
+			gzReader, err = gzip.NewReader(resp.Body)
 			if err != nil {
 				return fmt.Errorf("failed to create gzip reader: %w", err)
 			}

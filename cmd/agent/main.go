@@ -10,6 +10,14 @@ import (
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/agent"
+	"github.com/coalyonysh/go-musthave-metrics/internal/buildinfo"
+)
+
+// Глобальные переменные для информации о сборке
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
@@ -46,6 +54,8 @@ func main() {
 	keyFileFlag := flag.String("k", defaultKeyFile, "path to file containing hash key")
 	rateLimitFlag := flag.Int("l", defaultRateLimit, "rate limit for concurrent requests")
 	flag.Parse()
+
+	buildinfo.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
 	// Читаем ключ из файла, если указан
 	var key string
