@@ -42,6 +42,7 @@ func getEnvInt(key string, defaultValue int) int {
 func main() {
 	// Значения по умолчанию из переменных окружения
 	defaultAddr := getEnv("ADDRESS", "localhost:8080")
+	defaultGRPCAddr := getEnv("GRPC_ADDRESS", "")
 	defaultReportSec := getEnvInt("REPORT_INTERVAL", 10)
 	defaultPollSec := getEnvInt("POLL_INTERVAL", 2)
 	defaultKeyFile := getEnv("KEY", "")
@@ -51,6 +52,7 @@ func main() {
 
 	// Флаги командной строки
 	addrPtr := flag.String("a", defaultAddr, "server address")
+	grpcAddrPtr := flag.String("g", defaultGRPCAddr, "gRPC server address (e.g., localhost:9090)")
 	reportSecPtr := flag.Int("r", defaultReportSec, "report interval in seconds")
 	pollSecPtr := flag.Int("p", defaultPollSec, "poll interval in seconds")
 	keyFilePtr := flag.String("k", defaultKeyFile, "path to file containing hash key")
@@ -75,6 +77,9 @@ func main() {
 	// Применяем флаги (они имеют приоритет над env и config)
 	if addrPtr != nil && *addrPtr != "" && *addrPtr != defaultAddr {
 		cfg.ServerURL = *addrPtr
+	}
+	if grpcAddrPtr != nil && *grpcAddrPtr != "" {
+		cfg.GRPCAddress = *grpcAddrPtr
 	}
 	if reportSecPtr != nil && *reportSecPtr > 0 && *reportSecPtr != defaultReportSec {
 		cfg.ReportInterval = time.Duration(*reportSecPtr) * time.Second
