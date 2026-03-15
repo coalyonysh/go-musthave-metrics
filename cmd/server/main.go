@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"flag"
 	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/buildinfo"
@@ -369,9 +372,56 @@ func main() {
 		"GET /", "metrics dashboard",
 	)
 
-	// запускаем сервер
-	if err := http.ListenAndServe(serverAddr, router); err != nil {
-		// записываем в лог ошибку, если сервер не запустился
-		sugar.Fatalw(err.Error(), "event", "start server")
+	// Создаем HTTP сервер
+	srv := &http.Server{
+		Addr:    serverAddr,
+		Handler: router,
 	}
+
+	// Канал для ошибок сервера
+	errCh := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// Ожидаем сигнал остановки
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	// Ожидаем либо сигнал, либо ошибку сервера
+	select {
+	case err := <-errCh:
+		sugar.Fatalw(err.Error(), "event", "server error")
+	case <-sigCh:
+		sugar.Infow("Shutting down server...")
+	}
+
+	// Сохраняем метрики при выключении (если используется файловый storage)
+	if storagePath != "" && databaseDSN == "" {
+		sugar.Infow("Saving metrics before shutdown...")
+		if memStorage, ok := finalStorage.(*storage.MemStorage); ok {
+			if err := storage.SaveMetrics(memStorage, storagePath); err != nil {
+				sugar.Errorw("Failed to save metrics on shutdown", "error", err)
+			} else {
+				sugar.Infow("Metrics saved successfully")
+			}
+		}
+	}
+
+	// Graceful shutdown с таймаутом 10 секунд
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		sugar.Fatalw("Server forced to shutdown", "error", err)
+	}
+
+	// Закрываем БД, если используется
+	if db != nil {
+		db.Close()
+	}
+
+	sugar.Infow("Server stopped")
 }
