@@ -22,17 +22,16 @@ import "fmt"
 //	Build date: <buildDate>
 //	Build commit: <buildCommit>
 func PrintBuildInfo(buildVersion, buildDate, buildCommit string) {
-	if buildVersion == "" {
-		buildVersion = "N/A"
-	}
-	if buildDate == "" {
-		buildDate = "N/A"
-	}
-	if buildCommit == "" {
-		buildCommit = "N/A"
-	}
+	fmt.Printf("Build version: %s\nBuild date: %s\nBuild commit: %s\n",
+		normalizeValue(buildVersion),
+		normalizeValue(buildDate),
+		normalizeValue(buildCommit))
+}
 
-	fmt.Printf("Build version: %s\n", buildVersion)
-	fmt.Printf("Build date: %s\n", buildDate)
-	fmt.Printf("Build commit: %s\n", buildCommit)
+// normalizeValue возвращает значение или "N/A", если значение пустое
+func normalizeValue(value string) string {
+	if value == "" {
+		return "N/A"
+	}
+	return value
 }
