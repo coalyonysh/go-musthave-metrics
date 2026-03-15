@@ -47,55 +47,75 @@ func main() {
 	defaultKeyFile := getEnv("KEY", "")
 	defaultRateLimit := getEnvInt("RATE_LIMIT", 10)
 	defaultCryptoKey := getEnv("CRYPTO_KEY", "")
+	defaultConfig := getEnv("CONFIG", "")
 
-	// Флаги (приоритет у переменных окружения)
-	addrFlag := flag.String("a", defaultAddr, "server address")
-	reportSec := flag.Int("r", defaultReportSec, "report interval in seconds")
-	pollSec := flag.Int("p", defaultPollSec, "poll interval in seconds")
-	keyFileFlag := flag.String("k", defaultKeyFile, "path to file containing hash key")
-	rateLimitFlag := flag.Int("l", defaultRateLimit, "rate limit for concurrent requests")
-	cryptoKeyFlag := flag.String("crypto-key", defaultCryptoKey, "path to RSA public key file for encryption")
+	// Флаги командной строки
+	addrPtr := flag.String("a", defaultAddr, "server address")
+	reportSecPtr := flag.Int("r", defaultReportSec, "report interval in seconds")
+	pollSecPtr := flag.Int("p", defaultPollSec, "poll interval in seconds")
+	keyFilePtr := flag.String("k", defaultKeyFile, "path to file containing hash key")
+	rateLimitPtr := flag.Int("l", defaultRateLimit, "rate limit for concurrent requests")
+	cryptoKeyPtr := flag.String("crypto-key", defaultCryptoKey, "path to RSA public key file for encryption")
+	configPtr := flag.String("c", defaultConfig, "path to config file (JSON)")
 	flag.Parse()
+
+	// Устанавливаем путь к файлу конфигурации из флага -c, если указан
+	if configPtr != nil && *configPtr != "" {
+		os.Setenv("CONFIG", *configPtr)
+	}
+
+	// Загружаем конфигурацию (с учетом CONFIG env и файла)
+	cfg, err := agent.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
 
 	buildinfo.PrintBuildInfo(buildVersion, buildDate, buildCommit)
 
+	// Применяем флаги (они имеют приоритет над env и config)
+	if addrPtr != nil && *addrPtr != "" && *addrPtr != defaultAddr {
+		cfg.ServerURL = *addrPtr
+	}
+	if reportSecPtr != nil && *reportSecPtr > 0 && *reportSecPtr != defaultReportSec {
+		cfg.ReportInterval = time.Duration(*reportSecPtr) * time.Second
+	}
+	if pollSecPtr != nil && *pollSecPtr > 0 && *pollSecPtr != defaultPollSec {
+		cfg.PollInterval = time.Duration(*pollSecPtr) * time.Second
+	}
+	if rateLimitPtr != nil && *rateLimitPtr > 0 && *rateLimitPtr != defaultRateLimit {
+		cfg.RateLimit = *rateLimitPtr
+	}
+	if keyFilePtr != nil && *keyFilePtr != "" && *keyFilePtr != defaultKeyFile {
+		cfg.Key = *keyFilePtr
+	}
+	if cryptoKeyPtr != nil && *cryptoKeyPtr != "" && *cryptoKeyPtr != defaultCryptoKey {
+		cfg.CryptoKey = *cryptoKeyPtr
+	}
+
 	// Читаем ключ из файла, если указан
-	var key string
-	if *keyFileFlag != "" {
-		keyBytes, err := os.ReadFile(*keyFileFlag)
-		if err != nil {
-			// Если файл не найден, используем значение флага как ключ напрямую
-			key = *keyFileFlag
-		} else {
-			key = string(keyBytes)
+	if cfg.Key != "" {
+		keyBytes, err := os.ReadFile(cfg.Key)
+		if err == nil {
+			cfg.Key = string(keyBytes)
 		}
 	}
 
-	config := &agent.Config{
-		ServerURL:      *addrFlag,
-		PollInterval:   time.Duration(*pollSec) * time.Second,
-		ReportInterval: time.Duration(*reportSec) * time.Second,
-		Key:            key,
-		RateLimit:      *rateLimitFlag,
-		CryptoKey:      *cryptoKeyFlag,
-	}
-
-	if err := config.Validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		log.Fatalf("Invalid config: %v", err)
 	}
 
-	log.Printf("Config: Server=%s, PollInterval=%v, ReportInterval=%v, Key=%s, RateLimit=%d",
-		config.ServerURL, config.PollInterval, config.ReportInterval, config.Key, config.RateLimit)
+	log.Printf("Config: Server=%s, PollInterval=%v, ReportInterval=%v, Key=%s, RateLimit=%d, CryptoKey=%s",
+		cfg.ServerURL, cfg.PollInterval, cfg.ReportInterval, cfg.Key, cfg.RateLimit, cfg.CryptoKey)
 
-	agent := agent.NewAgent(*config)
+	agentInstance := agent.NewAgent(*cfg)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	go agent.Start()
+	go agentInstance.Start()
 
 	<-stop
 	log.Println("Shutting down agent...")
-	agent.Stop()
+	agentInstance.Stop()
 	log.Println("Agent stopped")
 }
