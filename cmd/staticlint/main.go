@@ -8,12 +8,12 @@
 //   - fieldalignment: проверка выравнивания полей структуры
 //   - shadow: проверка затенения переменных
 //
-// 2. Анализаторы staticcheck.io (SA и ST):
-//   - Все анализаторы SA (статический анализ)
-//   - Все анализаторы ST (стиль кода)
-//
-// 3. Собственный анализатор:
+// 2. Собственный анализатор:
 //   - noexit: запрещает использование os.Exit в функции main
+//
+// Для расширенного статического анализа рекомендуется также использовать:
+//   - staticcheck.io (отдельный инструмент): go install honnef.co/go/tools/cmd/staticcheck@latest
+//   - golangci-lint: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 //
 // Использование:
 //
@@ -32,13 +32,17 @@ import (
 
 func main() {
 	// multichecker.Main ожидает слайс указателей на анализаторы
-	// Используем multichecker с анализаторами из стандартной библиотеки
+	// Используем multichecker с анализаторами:
+	// 1. Стандартные анализаторы golang.org/x/tools/go/analysis/passes
+	// 2. Собственный анализатор noexit
 	multichecker.Main(
+		// Стандартные анализаторы golang.org/x/tools/go/analysis/passes
 		inspect.Analyzer,
 		printf.Analyzer,
 		structtag.Analyzer,
 		shadow.Analyzer,
 		fieldalignment.Analyzer,
+		// Собственный анализатор
 		noexit.NoExitAnalyzer,
 	)
 }

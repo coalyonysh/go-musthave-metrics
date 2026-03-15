@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -79,6 +80,9 @@ func LoadPrivateKey(filename string) (*PrivateKey, error) {
 // 3. Encrypt the AES key with RSA-OAEP
 // Returns: [12-byte nonce][encrypted AES key length (2 bytes)][encrypted AES key][ciphertext]
 func (p *PublicKey) Encrypt(data []byte) ([]byte, error) {
+	if p == nil || p.key == nil {
+		return nil, fmt.Errorf("public key is nil")
+	}
 	// Generate random AES key
 	aesKey := make([]byte, 32) // 256 bits
 	if _, err := rand.Read(aesKey); err != nil {
@@ -108,7 +112,7 @@ func (p *PublicKey) Encrypt(data []byte) ([]byte, error) {
 
 	// Encrypt AES key with RSA
 	encryptedAESKey, err := rsa.EncryptOAEP(
-		nil,
+		sha256.New(),
 		rand.Reader,
 		p.key,
 		aesKey,
@@ -133,6 +137,9 @@ func (p *PublicKey) Encrypt(data []byte) ([]byte, error) {
 // 1. Extract and decrypt the AES key with RSA
 // 2. Decrypt the data with AES-GCM
 func (p *PrivateKey) Decrypt(ciphertext []byte) ([]byte, error) {
+	if p == nil || p.key == nil {
+		return nil, fmt.Errorf("private key is nil")
+	}
 	if len(ciphertext) < 12+2 {
 		return nil, fmt.Errorf("ciphertext too short")
 	}
@@ -155,7 +162,7 @@ func (p *PrivateKey) Decrypt(ciphertext []byte) ([]byte, error) {
 
 	// Decrypt AES key with RSA
 	aesKey, err := rsa.DecryptOAEP(
-		nil,
+		sha256.New(),
 		rand.Reader,
 		p.key,
 		encryptedAESKey,
