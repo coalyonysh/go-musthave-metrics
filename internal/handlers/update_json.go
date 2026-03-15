@@ -62,7 +62,7 @@ func (h *UpdateJSONHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Декодируем JSON из тела запроса
 	var metric models.Metric
 	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
-	if err := decoder.Decode(&metric); err != nil {
+	if err = decoder.Decode(&metric); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
 		return
 	}
