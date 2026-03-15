@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"flag"
+	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
 	"github.com/coalyonysh/go-musthave-metrics/internal/service"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
+	"github.com/coalyonysh/go-musthave-metrics/pkg/crypto"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -119,6 +122,37 @@ func WithLogging(h http.Handler) http.Handler {
 var sugar zap.SugaredLogger
 var db *sql.DB
 
+// createDecryptMiddleware создает middleware для дешифрования запросов
+func createDecryptMiddleware(privateKey *crypto.PrivateKey) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Проверяем заголовок X-Encrypted
+			if r.Header.Get("X-Encrypted") == "true" {
+				// Читаем тело запроса
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, "Failed to read request body", http.StatusBadRequest)
+					return
+				}
+
+				// Дешифруем данные
+				decrypted, err := privateKey.Decrypt(body)
+				if err != nil {
+					sugar.Warnw("Failed to decrypt request", "error", err)
+					http.Error(w, "Failed to decrypt request", http.StatusBadRequest)
+					return
+				}
+
+				// Заменяем тело запроса на дешифрованные данные
+				r.Body = io.NopCloser(bytes.NewReader(decrypted))
+				r.ContentLength = int64(len(decrypted))
+				r.Header.Set("Content-Length", strconv.Itoa(len(decrypted)))
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+}
+
 func main() {
 	// создаём предустановленный регистратор zap
 	logger, err := zap.NewDevelopment()
@@ -140,6 +174,7 @@ func main() {
 	keyFile := flag.String("k", "", "path to file containing hash key")
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL to send audit logs")
+	cryptoKeyFile := flag.String("crypto-key", "", "path to RSA private key file for decryption")
 	flag.Parse()
 
 	// Вывод информации о сборке
@@ -154,6 +189,20 @@ func main() {
 	keyFileEnv := getEnv("KEY", *keyFile)
 	auditFilePath := getEnv("AUDIT_FILE", *auditFile)
 	auditURLPath := getEnv("AUDIT_URL", *auditURL)
+	cryptoKeyPath := getEnv("CRYPTO_KEY", *cryptoKeyFile)
+
+	// Читаем приватный ключ для дешифрования, если указан
+	var privateKey *crypto.PrivateKey
+	if cryptoKeyPath != "" {
+		var err error
+		privateKey, err = crypto.LoadPrivateKey(cryptoKeyPath)
+		if err != nil {
+			sugar.Warnw("Failed to load private key", "error", err, "path", cryptoKeyPath)
+			privateKey = nil
+		} else {
+			sugar.Infow("Private key loaded", "path", cryptoKeyPath)
+		}
+	}
 
 	// Читаем ключ из файла, если указан
 	var hashKey string
@@ -265,14 +314,24 @@ func main() {
 	pingHandler := handlers.NewPingHandler(db)
 	updatesHandler := handlers.NewUpdatesHandler(finalStorage, hashKey, auditService)
 
+	// Middleware для дешифрования запросов от агента
+	var decryptMiddleware func(http.Handler) http.Handler
+	if privateKey != nil {
+		decryptMiddleware = createDecryptMiddleware(privateKey)
+	}
+
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
 
 	// Добавляем middleware в правильном порядке:
 	// 1. Сначала распаковка запросов (GzipDecompress)
-	// 2. Затем сжатие ответов (GzipCompress)
-	// 3. В конце логирование (WithLogging)
+	// 2. Дешифрование (если есть ключ)
+	// 3. Затем сжатие ответов (GzipCompress)
+	// 4. В конце логирование (WithLogging)
 	router.Use(middleware.GzipDecompress)
+	if decryptMiddleware != nil {
+		router.Use(decryptMiddleware)
+	}
 	router.Use(middleware.GzipCompress)
 	router.Use(WithLogging)
 

@@ -11,7 +11,7 @@ import (
 
 type Agent struct {
 	collector      *MetricsCollector
-	client         client.MetricSender
+	client         *client.MetricHTTPClient
 	pollInterval   time.Duration
 	reportInterval time.Duration
 	rateLimit      int
@@ -24,9 +24,22 @@ type Agent struct {
 }
 
 func NewAgent(config Config) *Agent {
+	var httpClient *client.MetricHTTPClient
+	var err error
+
+	if config.CryptoKey != "" {
+		httpClient, err = client.NewMetricHTTPClientWithCrypto(config.ServerURL, config.Key, config.CryptoKey)
+		if err != nil {
+			log.Printf("Failed to create crypto client: %v, falling back to regular client", err)
+			httpClient = client.NewMetricHTTPClient(config.ServerURL, config.Key)
+		}
+	} else {
+		httpClient = client.NewMetricHTTPClient(config.ServerURL, config.Key)
+	}
+
 	return &Agent{
 		collector:      NewMetricsCollector(),
-		client:         client.NewMetricHTTPClient(config.ServerURL, config.Key),
+		client:         httpClient,
 		pollInterval:   config.PollInterval,
 		reportInterval: config.ReportInterval,
 		rateLimit:      config.RateLimit,
@@ -112,16 +125,10 @@ func (a *Agent) Stop() {
 
 func (a *Agent) sendMetrics(metrics []models.Metric) {
 	// Используем JSON клиент для отправки батча метрик через POST /updates
-	jsonClient, ok := a.client.(*client.MetricHTTPClient)
-	if !ok {
-		// Fallback на старый метод, если клиент не MetricHTTPClient
-		for _, metric := range metrics {
-			err := a.client.SendMetric(metric)
-			if err != nil {
-				log.Printf("Failed to send metric %s: %v", metric.ID, err)
-			}
-		}
-		log.Printf("Sent %d metrics to server", len(metrics))
+	jsonClient := a.client
+
+	if jsonClient == nil {
+		log.Printf("Client is nil, cannot send metrics")
 		return
 	}
 
