@@ -114,7 +114,10 @@ func main() {
 
 	go agentInstance.Start()
 
-	<-stop
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	<-sigCh
 	log.Println("Shutting down agent...")
 	agentInstance.Stop()
 	log.Println("Agent stopped")

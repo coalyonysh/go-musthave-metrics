@@ -123,3 +123,20 @@ func findMetricByID(metrics []models.Metric, id string) *models.Metric {
 	}
 	return nil
 }
+
+func TestMetricsCollector_NewMetricsCollector(t *testing.T) {
+	collector := NewMetricsCollector()
+
+	if collector == nil {
+		t.Fatal("NewMetricsCollector returned nil")
+	}
+
+	// Check initial state
+	if collector.pollCount != 0 {
+		t.Errorf("Expected initial pollCount to be 0, got %d", collector.pollCount)
+	}
+
+	if collector.randomValue != 0.0 {
+		t.Errorf("Expected initial randomValue to be 0.0, got %f", collector.randomValue)
+	}
+}
