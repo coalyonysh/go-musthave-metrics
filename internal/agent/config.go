@@ -11,6 +11,7 @@ type Config struct {
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	Key            string
+	CryptoKey      string
 	RateLimit      int
 }
 

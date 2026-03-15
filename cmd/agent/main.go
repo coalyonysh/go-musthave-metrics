@@ -46,6 +46,7 @@ func main() {
 	defaultPollSec := getEnvInt("POLL_INTERVAL", 2)
 	defaultKeyFile := getEnv("KEY", "")
 	defaultRateLimit := getEnvInt("RATE_LIMIT", 10)
+	defaultCryptoKey := getEnv("CRYPTO_KEY", "")
 
 	// Флаги (приоритет у переменных окружения)
 	addrFlag := flag.String("a", defaultAddr, "server address")
@@ -53,6 +54,7 @@ func main() {
 	pollSec := flag.Int("p", defaultPollSec, "poll interval in seconds")
 	keyFileFlag := flag.String("k", defaultKeyFile, "path to file containing hash key")
 	rateLimitFlag := flag.Int("l", defaultRateLimit, "rate limit for concurrent requests")
+	cryptoKeyFlag := flag.String("crypto-key", defaultCryptoKey, "path to RSA public key file for encryption")
 	flag.Parse()
 
 	buildinfo.PrintBuildInfo(buildVersion, buildDate, buildCommit)
@@ -75,6 +77,7 @@ func main() {
 		ReportInterval: time.Duration(*reportSec) * time.Second,
 		Key:            key,
 		RateLimit:      *rateLimitFlag,
+		CryptoKey:      *cryptoKeyFlag,
 	}
 
 	if err := config.Validate(); err != nil {

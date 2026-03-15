@@ -15,17 +15,21 @@ import (
 	"time"
 
 	"github.com/coalyonysh/go-musthave-metrics/internal/models"
+	"github.com/coalyonysh/go-musthave-metrics/pkg/crypto"
 	"github.com/coalyonysh/go-musthave-metrics/pkg/signature"
 )
 
 type MetricSender interface {
 	SendMetric(metric models.Metric) error
+	SendMetricJSON(metric models.Metric) error
+	SendMetricsBatch(metrics []models.Metric) error
 }
 
 type MetricHTTPClient struct {
 	baseURL    string
 	httpClient *http.Client
 	key        string
+	cryptoKey  *crypto.PublicKey
 }
 
 func NewMetricHTTPClient(baseURL string, key string) *MetricHTTPClient {
@@ -36,6 +40,26 @@ func NewMetricHTTPClient(baseURL string, key string) *MetricHTTPClient {
 		},
 		key: key,
 	}
+}
+
+func NewMetricHTTPClientWithCrypto(baseURL string, key string, cryptoKeyPath string) (*MetricHTTPClient, error) {
+	client := &MetricHTTPClient{
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+		key: key,
+	}
+
+	if cryptoKeyPath != "" {
+		pubKey, err := crypto.LoadPublicKey(cryptoKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load crypto key: %w", err)
+		}
+		client.cryptoKey = pubKey
+	}
+
+	return client, nil
 }
 
 // isRetriableError проверяет, является ли ошибка retriable
@@ -149,8 +173,23 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
 
-		// Добавляем хеш, если ключ задан
-		if c.key != "" {
+		// Добавляем шифрование, если ключ задан
+		if c.cryptoKey != nil {
+			encryptedData, err := c.cryptoKey.Encrypt(compressedData.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to encrypt data: %w", err)
+			}
+			req.Body = nil
+			req.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(encryptedData)), nil
+			}
+			req.ContentLength = int64(len(encryptedData))
+			req.Header.Set("Content-Encoding", "gzip") // keep gzip encoding header
+			req.Header.Set("X-Encrypted", "true")
+		}
+
+		// Добавляем хеш, если ключ задан (до шифрования)
+		if c.key != "" && c.cryptoKey == nil {
 			hash := signature.CalculateHash(jsonData, c.key)
 			req.Header.Set("HashSHA256", hash)
 		}
@@ -221,17 +260,38 @@ func (c *MetricHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
 	return retrySend(func() error {
 		url := fmt.Sprintf("%s/updates", c.baseURL)
 
-		req, err := http.NewRequest("POST", url, bytes.NewReader(compressedData.Bytes()))
+		var body io.Reader
+		var contentType string
+
+		// Если задан крипто ключ, шифруем данные
+		if c.cryptoKey != nil {
+			encryptedData, err := c.cryptoKey.Encrypt(compressedData.Bytes())
+			if err != nil {
+				return fmt.Errorf("failed to encrypt data: %w", err)
+			}
+			body = bytes.NewReader(encryptedData)
+			contentType = "application/json"
+		} else {
+			body = bytes.NewReader(compressedData.Bytes())
+			contentType = "application/json"
+		}
+
+		req, err := http.NewRequest("POST", url, body)
 		if err != nil {
 			return fmt.Errorf("failed to create request: %w", err)
 		}
 
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Accept-Encoding", "gzip")
 
-		// Добавляем хеш, если ключ задан
-		if c.key != "" {
+		// Добавляем заголовок X-Encrypted если данные зашифрованы
+		if c.cryptoKey != nil {
+			req.Header.Set("X-Encrypted", "true")
+		}
+
+		// Добавляем хеш, если ключ задан (до шифрования)
+		if c.key != "" && c.cryptoKey == nil {
 			hash := signature.CalculateHash(jsonData, c.key)
 			req.Header.Set("HashSHA256", hash)
 		}
