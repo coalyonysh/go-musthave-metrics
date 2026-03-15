@@ -22,6 +22,22 @@ func (m *mockHTTPClient) SendMetric(metric models.Metric) error {
 	return nil
 }
 
+func (m *mockHTTPClient) SendMetricJSON(metric models.Metric) error {
+	if m.shouldError {
+		return &mockError{}
+	}
+	m.sentMetrics = append(m.sentMetrics, metric)
+	return nil
+}
+
+func (m *mockHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
+	if m.shouldError {
+		return &mockError{}
+	}
+	m.sentMetrics = append(m.sentMetrics, metrics...)
+	return nil
+}
+
 type mockError struct{}
 
 func (e *mockError) Error() string {

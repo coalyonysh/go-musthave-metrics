@@ -11,7 +11,7 @@ import (
 
 type Agent struct {
 	collector      *MetricsCollector
-	client         *client.MetricHTTPClient
+	client         client.MetricSender
 	pollInterval   time.Duration
 	reportInterval time.Duration
 	rateLimit      int

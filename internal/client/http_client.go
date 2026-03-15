@@ -21,6 +21,8 @@ import (
 
 type MetricSender interface {
 	SendMetric(metric models.Metric) error
+	SendMetricJSON(metric models.Metric) error
+	SendMetricsBatch(metrics []models.Metric) error
 }
 
 type MetricHTTPClient struct {
