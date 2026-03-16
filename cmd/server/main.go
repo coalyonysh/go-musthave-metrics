@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"flag"
 	"io"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -156,6 +157,55 @@ func createDecryptMiddleware(privateKey *crypto.PrivateKey) func(http.Handler) h
 	}
 }
 
+// createTrustedSubnetMiddleware создает middleware для проверки IP адреса
+func createTrustedSubnetMiddleware(trustedSubnetCIDR string) func(http.Handler) http.Handler {
+	// Если подсеть не указана, пропускаем все запросы
+	if trustedSubnetCIDR == "" {
+		return func(h http.Handler) http.Handler {
+			return h
+		}
+	}
+
+	// Парсим CIDR
+	_, ipNet, err := net.ParseCIDR(trustedSubnetCIDR)
+	if err != nil {
+		sugar.Warnw("Invalid CIDR notation", "cidr", trustedSubnetCIDR, "error", err)
+		// Если CIDR некорректный, пропускаем все запросы
+		return func(h http.Handler) http.Handler {
+			return h
+		}
+	}
+
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Получаем IP из заголовка X-Real-IP
+			clientIP := r.Header.Get("X-Real-IP")
+			if clientIP == "" {
+				sugar.Warnw("Missing X-Real-IP header")
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			// Парсим IP адрес клиента
+			ip := net.ParseIP(clientIP)
+			if ip == nil {
+				sugar.Warnw("Invalid IP in X-Real-IP header", "ip", clientIP)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			// Проверяем, находится ли IP в доверенной подсети
+			if !ipNet.Contains(ip) {
+				sugar.Warnw("IP not in trusted subnet", "ip", clientIP, "subnet", trustedSubnetCIDR)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+
+			h.ServeHTTP(w, r)
+		})
+	}
+}
+
 func main() {
 	// создаём предустановленный регистратор zap
 	logger, err := zap.NewDevelopment()
@@ -178,6 +228,7 @@ func main() {
 	auditFile := flag.String("audit-file", "", "path to audit log file")
 	auditURL := flag.String("audit-url", "", "URL to send audit logs")
 	cryptoKeyFile := flag.String("crypto-key", "", "path to RSA private key file for decryption")
+	trustedSubnet := flag.String("t", "", "trusted subnet in CIDR notation")
 	flag.Parse()
 
 	// Вывод информации о сборке
@@ -193,6 +244,7 @@ func main() {
 	auditFilePath := getEnv("AUDIT_FILE", *auditFile)
 	auditURLPath := getEnv("AUDIT_URL", *auditURL)
 	cryptoKeyPath := getEnv("CRYPTO_KEY", *cryptoKeyFile)
+	trustedSubnetCIDR := getEnv("TRUSTED_SUBNET", *trustedSubnet)
 
 	// Читаем приватный ключ для дешифрования, если указан
 	var privateKey *crypto.PrivateKey
@@ -323,15 +375,20 @@ func main() {
 		decryptMiddleware = createDecryptMiddleware(privateKey)
 	}
 
+	// Middleware для проверки IP адреса
+	trustedSubnetMiddleware := createTrustedSubnetMiddleware(trustedSubnetCIDR)
+
 	// Создаем роутер с помощью gorilla/mux
 	router := mux.NewRouter()
 
 	// Добавляем middleware в правильном порядке:
 	// 1. Сначала распаковка запросов (GzipDecompress)
-	// 2. Дешифрование (если есть ключ)
-	// 3. Затем сжатие ответов (GzipCompress)
-	// 4. В конце логирование (WithLogging)
+	// 2. Проверка IP (trustedSubnetMiddleware)
+	// 3. Дешифрование (если есть ключ)
+	// 4. Затем сжатие ответов (GzipCompress)
+	// 5. В конце логирование (WithLogging)
 	router.Use(middleware.GzipDecompress)
+	router.Use(trustedSubnetMiddleware)
 	if decryptMiddleware != nil {
 		router.Use(decryptMiddleware)
 	}

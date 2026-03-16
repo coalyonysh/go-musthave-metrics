@@ -5,100 +5,89 @@ import (
 	"testing"
 )
 
-func TestNew(t *testing.T) {
-	factory := func() *Request {
-		return &Request{
-			Headers: make(map[string]string),
-		}
+// TestRequest is a test struct that implements Resetter interface
+type TestRequest struct {
+	ID     int
+	Status string
+}
+
+// Reset implements Resetter interface
+func (r *TestRequest) Reset() {
+	r.ID = 0
+	r.Status = ""
+}
+
+// TestNewPool tests the New constructor
+func TestNewPool(t *testing.T) {
+	factory := func() *TestRequest {
+		return &TestRequest{}
 	}
 
 	pool := New(factory)
-
 	if pool == nil {
-		t.Fatal("New() returned nil")
+		t.Fatal("Expected non-nil pool")
+	}
+
+	// Get an object from pool
+	obj := pool.Get()
+	if obj == nil {
+		t.Error("Expected non-nil object from pool")
 	}
 }
 
+// TestPoolGetPut tests getting and putting objects in the pool
 func TestPoolGetPut(t *testing.T) {
-	factory := func() *Request {
-		return &Request{
-			Headers: make(map[string]string),
-		}
+	factory := func() *TestRequest {
+		return &TestRequest{Status: "initialized"}
 	}
 
 	pool := New(factory)
 
-	// Get an object from the pool
-	req1 := pool.Get()
-	req1.ID = 1
-	req1.Method = "GET"
-	req1.URL = "https://example.com"
-	req1.Headers["Content-Type"] = "application/json"
-	req1.Body = []byte(`{"key": "value"}`)
+	// Get an object
+	obj1 := pool.Get()
+	obj1.ID = 1
+	obj1.Status = "modified"
 
-	// Put the object back (this should reset it)
-	pool.Put(req1)
+	// Put it back
+	pool.Put(obj1)
 
-	// Get another object - should be reset
-	req2 := pool.Get()
-
-	if req2.ID != 0 {
-		t.Errorf("Expected ID to be 0 after reset, got %d", req2.ID)
+	// Get again - should be reset
+	obj2 := pool.Get()
+	if obj2.ID != 0 {
+		t.Errorf("Expected ID to be 0 after reset, got %d", obj2.ID)
 	}
-	if req2.Method != "" {
-		t.Errorf("Expected Method to be empty after reset, got %s", req2.Method)
-	}
-	if req2.URL != "" {
-		t.Errorf("Expected URL to be empty after reset, got %s", req2.URL)
-	}
-	if len(req2.Headers) != 0 {
-		t.Errorf("Expected Headers to be empty after reset, got %v", req2.Headers)
-	}
-	if len(req2.Body) != 0 {
-		t.Errorf("Expected Body to be empty after reset, got %v", req2.Body)
+	if obj2.Status != "" {
+		t.Errorf("Expected Status to be empty after reset, got %s", obj2.Status)
 	}
 }
 
-func TestRequestReset(t *testing.T) {
-	req := &Request{
-		ID:      42,
-		Method:  "POST",
-		URL:     "https://example.com/submit",
-		Headers: map[string]string{"Authorization": "Bearer token"},
-		Body:    []byte(`{"data": "test"}`),
+// TestPoolMultipleGets tests multiple gets from the pool
+func TestPoolMultipleGets(t *testing.T) {
+	factory := func() *TestRequest {
+		return &TestRequest{}
 	}
 
-	// Reset the request
-	req.Reset()
+	pool := New(factory)
 
-	if req.ID != 0 {
-		t.Errorf("Expected ID to be 0 after reset, got %d", req.ID)
-	}
-	if req.Method != "" {
-		t.Errorf("Expected Method to be empty after reset, got %s", req.Method)
-	}
-	if req.URL != "" {
-		t.Errorf("Expected URL to be empty after reset, got %s", req.URL)
-	}
-	if req.Headers == nil {
-		t.Error("Expected Headers to not be nil after reset")
-	}
-	if len(req.Headers) != 0 {
-		t.Errorf("Expected Headers to be empty after reset, got %v", req.Headers)
-	}
-	if req.Body == nil {
-		t.Error("Expected Body to not be nil after reset")
-	}
-	if len(req.Body) != 0 {
-		t.Errorf("Expected Body length to be 0 after reset, got %d", len(req.Body))
+	// Get multiple objects
+	obj1 := pool.Get()
+	obj1.ID = 100
+	pool.Put(obj1)
+
+	obj2 := pool.Get()
+	obj2.ID = 200
+	pool.Put(obj2)
+
+	obj3 := pool.Get()
+	if obj3.ID != 0 {
+		t.Errorf("Expected ID to be 0, got %d", obj3.ID)
 	}
 }
 
+// TestPoolConcurrentAccess tests concurrent access to the pool
 func TestPoolConcurrentAccess(t *testing.T) {
-	factory := func() *Request {
-		return &Request{
-			Headers: make(map[string]string),
-		}
+	factory := func() *TestRequest {
+		return &TestRequest{}
 	}
 
 	pool := New(factory)
@@ -111,47 +100,73 @@ func TestPoolConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			// Get an object
-			req := pool.Get()
-			req.ID = id
-			req.Method = "GET"
+			// Get from pool
+			obj := pool.Get()
+			obj.ID = id
 
-			// Put it back
-			pool.Put(req)
+			// Verify we can set ID
+			if obj.ID != id {
+				t.Errorf("Expected ID %d, got %d", id, obj.ID)
+			}
+
+			// Put back
+			pool.Put(obj)
 		}(i)
 	}
 
 	wg.Wait()
+}
 
-	// Verify the pool works after concurrent access
-	req := pool.Get()
-	if req == nil {
-		t.Error("Failed to get request from pool after concurrent access")
+// TestRequestReset tests the Reset method of Request
+func TestRequestReset(t *testing.T) {
+	req := &Request{
+		ID:     42,
+		Method: "POST",
+		URL:    "https://example.com",
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		Body: []byte("test body"),
+	}
+
+	req.Reset()
+
+	if req.ID != 0 {
+		t.Errorf("Expected ID to be 0, got %d", req.ID)
+	}
+	if req.Method != "" {
+		t.Errorf("Expected Method to be empty, got %s", req.Method)
+	}
+	if req.URL != "" {
+		t.Errorf("Expected URL to be empty, got %s", req.URL)
+	}
+	if req.Headers == nil {
+		t.Error("Expected Headers to be initialized")
+	}
+	if len(req.Headers) != 0 {
+		t.Errorf("Expected Headers to be empty, got %d items", len(req.Headers))
+	}
+	if len(req.Body) != 0 {
+		t.Errorf("Expected Body length to be 0, got %d", len(req.Body))
 	}
 }
 
-func TestPoolMultipleGets(t *testing.T) {
-	factory := func() *Request {
-		return &Request{
-			Headers: make(map[string]string),
-		}
+// TestRequestResetWithLargeBody tests Reset with large body capacity
+func TestRequestResetWithLargeBody(t *testing.T) {
+	req := &Request{
+		Body: make([]byte, 0, 1000),
 	}
 
-	pool := New(factory)
+	// Add some data
+	req.Body = append(req.Body, []byte("some data")...)
 
-	// Get multiple objects
-	req1 := pool.Get()
-	req1.ID = 1
-	pool.Put(req1)
+	req.Reset()
 
-	req2 := pool.Get()
-	req2.ID = 2
-	pool.Put(req2)
-
-	req3 := pool.Get()
-
-	// After putting back req1 and req2, getting req3 should give us a reset object
-	if req3.ID != 0 {
-		t.Errorf("Expected ID to be 0, got %d", req3.ID)
+	// Body should be empty but retain capacity
+	if len(req.Body) != 0 {
+		t.Errorf("Expected Body length to be 0, got %d", len(req.Body))
+	}
+	if cap(req.Body) != 1000 {
+		t.Errorf("Expected Body capacity to be 1000, got %d", cap(req.Body))
 	}
 }

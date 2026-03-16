@@ -30,25 +30,30 @@ type MetricHTTPClient struct {
 	httpClient *http.Client
 	key        string
 	cryptoKey  *crypto.PublicKey
+	localIP    string
 }
 
 func NewMetricHTTPClient(baseURL string, key string) *MetricHTTPClient {
+	localIP := getLocalIP()
 	return &MetricHTTPClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		key: key,
+		key:     key,
+		localIP: localIP,
 	}
 }
 
 func NewMetricHTTPClientWithCrypto(baseURL string, key string, cryptoKeyPath string) (*MetricHTTPClient, error) {
+	localIP := getLocalIP()
 	client := &MetricHTTPClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		key: key,
+		key:     key,
+		localIP: localIP,
 	}
 
 	if cryptoKeyPath != "" {
@@ -60,6 +65,30 @@ func NewMetricHTTPClientWithCrypto(baseURL string, key string, cryptoKeyPath str
 	}
 
 	return client, nil
+}
+
+// getLocalIP returns the local IP address of the machine
+func getLocalIP() string {
+	// Сначала попробуем подключиться к внешнему адресу, чтобы определить локальный IP
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		// Если не удалось, попробуем через UDP к любому локальному адресу
+		conn, err = net.Dial("udp", "192.168.0.0:80")
+		if err != nil {
+			return "127.0.0.1"
+		}
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
+}
+
+// addXRealIPHeader adds X-Real-IP header to the request
+func (c *MetricHTTPClient) addXRealIPHeader(req *http.Request) {
+	if c.localIP != "" {
+		req.Header.Set("X-Real-IP", c.localIP)
+	}
 }
 
 // isRetriableError проверяет, является ли ошибка retriable
@@ -119,6 +148,7 @@ func (c *MetricHTTPClient) SendMetric(metric models.Metric) error {
 	}
 
 	req.Header.Set("Content-Type", "text/plain")
+	c.addXRealIPHeader(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -193,6 +223,8 @@ func (c *MetricHTTPClient) SendMetricJSON(metric models.Metric) error {
 			hash := signature.CalculateHash(jsonData, c.key)
 			req.Header.Set("HashSHA256", hash)
 		}
+
+		c.addXRealIPHeader(req)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -295,6 +327,8 @@ func (c *MetricHTTPClient) SendMetricsBatch(metrics []models.Metric) error {
 			hash := signature.CalculateHash(jsonData, c.key)
 			req.Header.Set("HashSHA256", hash)
 		}
+
+		c.addXRealIPHeader(req)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
