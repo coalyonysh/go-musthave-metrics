@@ -143,6 +143,7 @@ func (a *Agent) sendMetrics(metrics []models.Metric) {
 			log.Printf("Failed to send metrics via gRPC: %v, falling back to HTTP", err)
 			// Fallback to HTTP
 			a.sendViaHTTP(metrics)
+			return
 		}
 		log.Printf("Sent %d metrics to gRPC server", len(metrics))
 		return

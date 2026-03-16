@@ -108,6 +108,11 @@ func UnaryTrustedSubnetInterceptor(subnet string) (grpc.UnaryServerInterceptor, 
 	}
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		// Если подсеть не задана, пропускаем все запросы
+		if checker.ipNet == nil {
+			return handler(ctx, req)
+		}
+
 		// Получаем IP из метаданных
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
