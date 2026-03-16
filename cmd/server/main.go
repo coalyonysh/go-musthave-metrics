@@ -481,12 +481,21 @@ func main() {
 	// Ожидаем либо сигнал, либо ошибку сервера
 	select {
 	case err := <-errCh:
-		sugar.Fatalw(err.Error(), "event", "server error")
+		sugar.Errorw(err.Error(), "event", "server error")
 	case <-sigCh:
 		sugar.Infow("Shutting down server...")
 	}
 
-	// Сохраняем метрики при выключении (если используется файловый storage)
+	// Graceful shutdown с таймаутом 10 секунд
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Сначала останавливаем сервер, чтобы не принимать новые запросы
+	if err := srv.Shutdown(ctx); err != nil {
+		sugar.Errorw("Server forced to shutdown", "error", err)
+	}
+
+	// Теперь сохраняем метрики (сервер уже не принимает запросы)
 	if storagePath != "" && databaseDSN == "" {
 		sugar.Infow("Saving metrics before shutdown...")
 		if memStorage, ok := finalStorage.(*storage.MemStorage); ok {
@@ -496,20 +505,6 @@ func main() {
 				sugar.Infow("Metrics saved successfully")
 			}
 		}
-	}
-
-	// Graceful shutdown с таймаутом 10 секунд
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		sugar.Fatalw("Server forced to shutdown", "error", err)
-	}
-
-	// Останавливаем gRPC сервер, если он был запущен
-	if grpcServer != nil {
-		grpcServer.GracefulStop()
-		sugar.Infow("gRPC server stopped")
 	}
 
 	// Закрываем БД, если используется
