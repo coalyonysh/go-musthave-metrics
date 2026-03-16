@@ -340,6 +340,11 @@ func TestAgent_NewAgent_WithCryptoKeyFallback(t *testing.T) {
 		t.Error("expected agent to be created")
 	}
 
+	if agent == nil {
+		t.Error("expected agent to be created")
+		return
+	}
+
 	if agent.pollInterval != time.Second {
 		t.Errorf("expected poll interval 1s, got %v", agent.pollInterval)
 	}
@@ -370,6 +375,11 @@ func TestAgent_NewAgent_WithoutCryptoKey(t *testing.T) {
 
 	if agent == nil {
 		t.Error("expected agent to be created")
+	}
+
+	if agent == nil {
+		t.Error("expected agent to be created")
+		return
 	}
 
 	if agent.pollInterval != 2*time.Second {

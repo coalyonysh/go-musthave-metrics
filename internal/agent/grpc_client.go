@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/coalyonysh/go-musthave-metrics/api/proto"
@@ -21,7 +22,7 @@ type MetricGRPCClient struct {
 
 // NewMetricGRPCClient создает новый gRPC клиент для метрик
 func NewMetricGRPCClient(address string, clientIP string) (*MetricGRPCClient, error) {
-	conn, err := grpc.Dial(address, grpc.WithInsecure())
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
