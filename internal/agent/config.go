@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	ServerURL      string
+	GRPCAddress    string
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	Key            string
@@ -43,6 +44,9 @@ func LoadConfig() (*Config, error) {
 		if jsonCfg.Address != "" {
 			cfg.ServerURL = jsonCfg.Address
 		}
+		if jsonCfg.GRPCAddress != "" {
+			cfg.GRPCAddress = jsonCfg.GRPCAddress
+		}
 		if jsonCfg.PollInterval != "" {
 			d, err := config.ParseDuration(jsonCfg.PollInterval)
 			if err != nil {
@@ -65,6 +69,9 @@ func LoadConfig() (*Config, error) {
 	// Переменные окружения (средний приоритет)
 	if envAddr := os.Getenv("ADDRESS"); envAddr != "" {
 		cfg.ServerURL = envAddr
+	}
+	if envGRPCAddr := os.Getenv("GRPC_ADDRESS"); envGRPCAddr != "" {
+		cfg.GRPCAddress = envGRPCAddr
 	}
 	if envPoll := os.Getenv("POLL_INTERVAL"); envPoll != "" {
 		d, err := time.ParseDuration(envPoll)

@@ -12,6 +12,7 @@ import (
 type Agent struct {
 	collector      *MetricsCollector
 	client         client.MetricSender
+	grpcClient     *MetricGRPCClient
 	pollInterval   time.Duration
 	reportInterval time.Duration
 	rateLimit      int
@@ -37,9 +38,20 @@ func NewAgent(config Config) *Agent {
 		httpClient = client.NewMetricHTTPClient(config.ServerURL, config.Key)
 	}
 
+	// Создаем gRPC клиент если указан адрес
+	var grpcClient *MetricGRPCClient
+	if config.GRPCAddress != "" {
+		grpcClient, err = NewMetricGRPCClient(config.GRPCAddress, getLocalIP())
+		if err != nil {
+			log.Printf("Failed to create gRPC client: %v, falling back to HTTP", err)
+			grpcClient = nil
+		}
+	}
+
 	return &Agent{
 		collector:      NewMetricsCollector(),
 		client:         httpClient,
+		grpcClient:     grpcClient,
 		pollInterval:   config.PollInterval,
 		reportInterval: config.ReportInterval,
 		rateLimit:      config.RateLimit,
@@ -47,7 +59,7 @@ func NewAgent(config Config) *Agent {
 		wg:             sync.WaitGroup{},
 		metricsMutex:   sync.RWMutex{},
 		metrics:        nil,
-		metricsChan:    make(chan []models.Metric, config.RateLimit*2), // буфер для избежания блокировки
+		metricsChan:    make(chan []models.Metric, config.RateLimit*2),
 	}
 }
 
@@ -124,7 +136,24 @@ func (a *Agent) Stop() {
 }
 
 func (a *Agent) sendMetrics(metrics []models.Metric) {
-	// Используем JSON клиент для отправки батча метрик через POST /updates
+	// Если есть gRPC клиент, используем его
+	if a.grpcClient != nil {
+		err := a.grpcClient.SendMetricsBatch(metrics)
+		if err != nil {
+			log.Printf("Failed to send metrics via gRPC: %v, falling back to HTTP", err)
+			// Fallback to HTTP
+			a.sendViaHTTP(metrics)
+			return
+		}
+		log.Printf("Sent %d metrics to gRPC server", len(metrics))
+		return
+	}
+
+	// Используем HTTP клиент
+	a.sendViaHTTP(metrics)
+}
+
+func (a *Agent) sendViaHTTP(metrics []models.Metric) {
 	jsonClient := a.client
 
 	if jsonClient == nil {

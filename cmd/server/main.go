@@ -16,9 +16,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/coalyonysh/go-musthave-metrics/api/proto"
 	"github.com/coalyonysh/go-musthave-metrics/internal/buildinfo"
 	"github.com/coalyonysh/go-musthave-metrics/internal/handlers"
 	"github.com/coalyonysh/go-musthave-metrics/internal/middleware"
+	"github.com/coalyonysh/go-musthave-metrics/internal/server"
 	"github.com/coalyonysh/go-musthave-metrics/internal/service"
 	"github.com/coalyonysh/go-musthave-metrics/internal/storage"
 	"github.com/coalyonysh/go-musthave-metrics/pkg/crypto"
@@ -28,6 +30,7 @@ import (
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // Глобальные переменные для информации о сборке
@@ -220,6 +223,7 @@ func main() {
 
 	// Определяем флаги со значениями по умолчанию
 	addr := flag.String("a", "localhost:8080", "http server address")
+	grpcAddr := flag.String("g", "", "gRPC server address (e.g., localhost:9090)")
 	storeInterval := flag.Int("i", 300, "store interval in seconds (0 = sync)")
 	filePath := flag.String("f", "/tmp/metrics-db.json", "file storage path")
 	restore := flag.Bool("r", true, "restore metrics from file on startup")
@@ -236,6 +240,7 @@ func main() {
 
 	// Приоритет: переменная окружения > флаг > значение по умолчанию
 	serverAddr := getEnv("ADDRESS", *addr)
+	grpcServerAddr := getEnv("GRPC_ADDRESS", *grpcAddr)
 	storeIntervalSec := getEnvInt("STORE_INTERVAL", *storeInterval)
 	storagePath := getEnv("FILE_STORAGE_PATH", *filePath)
 	shouldRestore := getEnvBool("RESTORE", *restore)
@@ -442,6 +447,32 @@ func main() {
 			errCh <- err
 		}
 	}()
+
+	// Запускаем gRPC сервер, если адрес указан
+	var grpcServer *grpc.Server
+	if grpcServerAddr != "" {
+		// Создаём интерцептор для проверки подсети
+		interceptor, err := server.UnaryTrustedSubnetInterceptor(trustedSubnetCIDR)
+		if err != nil {
+			sugar.Fatalw("Failed to create trusted subnet interceptor", "error", err)
+		}
+
+		grpcServer = grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+		proto.RegisterMetricsServer(grpcServer, server.NewMetricsServerImpl(finalStorage))
+
+		grpcListener, err := net.Listen("tcp", grpcServerAddr)
+		if err != nil {
+			sugar.Fatalw("Failed to listen gRPC", "error", err, "addr", grpcServerAddr)
+		}
+
+		sugar.Infow("Starting gRPC server", "addr", grpcServerAddr)
+
+		go func() {
+			if err := grpcServer.Serve(grpcListener); err != nil {
+				sugar.Errorw("gRPC server error", "error", err)
+			}
+		}()
+	}
 
 	// Ожидаем сигнал остановки
 	sigCh := make(chan os.Signal, 1)

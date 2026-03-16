@@ -10,6 +10,7 @@ import (
 // AgentConfig - конфигурация агента из JSON файла
 type AgentConfig struct {
 	Address        string `json:"address"`
+	GRPCAddress    string `json:"grpc_address"`
 	ReportInterval string `json:"report_interval"`
 	PollInterval   string `json:"poll_interval"`
 	CryptoKey      string `json:"crypto_key"`
@@ -18,6 +19,7 @@ type AgentConfig struct {
 // ServerConfig - конфигурация сервера из JSON файла
 type ServerConfig struct {
 	Address       string `json:"address"`
+	GRPCAddress   string `json:"grpc_address"`
 	Restore       bool   `json:"restore"`
 	StoreInterval string `json:"store_interval"`
 	StoreFile     string `json:"store_file"`
